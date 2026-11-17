@@ -170,6 +170,11 @@ unknown-only objects return `400 VALIDATION_ERROR`.
 is hidden from user lists. Quotes, orders and status history keep their author references. Deactivated
 users cannot be edited through this API, and their email remains reserved to the original account.
 
+User creation, role changes and deactivation are serialized per organization inside transactions.
+Permissions are checked again after acquiring the lock, so requests authenticated before an admin was
+demoted or deactivated cannot continue managing users. An organization must keep at least one active admin;
+admins also cannot demote or deactivate themselves.
+
 Prices, line totals, subtotals, tax and document totals must each fit in `0..2147483647` cents.
 Inputs or calculated amounts outside this range return `400`; failed writes leave existing documents unchanged.
 

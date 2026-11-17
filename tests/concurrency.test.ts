@@ -6,11 +6,13 @@
  * They run when TEST_DATABASE_URL is set (CI provides a Postgres service) and are skipped otherwise.
  */
 import request from 'supertest';
+import { and, eq, isNull } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app';
 import { config } from '../src/config';
 import { createPgDatabase } from '../src/db/client';
-import { registerOrg, type Session } from './helpers';
+import { users } from '../src/db/schema';
+import { createUser, registerOrg, type Session } from './helpers';
 
 const url = process.env.TEST_DATABASE_URL;
 const PARALLEL = 8;
@@ -74,5 +76,25 @@ describe.skipIf(!url)('concurrency on real Postgres', () => {
 
   it('keeps the pool usable for plain requests afterwards', async () => {
     await request(app).get('/health').expect(200);
+  });
+
+  it.each([
+    ['demote', 'demote'],
+    ['deactivate', 'deactivate'],
+    ['demote', 'deactivate'],
+  ] as const)('preserves an active admin when %s and %s requests race on separate connections', async (firstAction, secondAction) => {
+    const first = await registerOrg(app, 'Admin race');
+    const second = await createUser(app, first, 'admin');
+    const change = (actor: Session, target: Session, action: 'demote' | 'deactivate') => action === 'demote'
+      ? actor.as('patch', `/users/${target.userId}`).send({ role: 'viewer' })
+      : actor.as('delete', `/users/${target.userId}`);
+    const responses = await Promise.all([change(first, second, firstAction), change(second, first, secondAction)]);
+    expect(responses.filter((r) => r.status === 200 || r.status === 204)).toHaveLength(1);
+    expect(responses.filter((r) => r.status === 401 || r.status === 403)).toHaveLength(1);
+    const remaining = await pg.db.select().from(users)
+      .where(and(eq(users.organizationId, first.organizationId), eq(users.role, 'admin'), isNull(users.deletedAt)));
+    expect(remaining).toHaveLength(1);
+    const survivor = remaining[0]!.id === first.userId ? first : second;
+    await survivor.as('get', '/users').expect(200);
   });
 });

@@ -2175,7 +2175,7 @@ export interface paths {
         put?: never;
         post?: never;
         /**
-         * Deactivate a user and revoke access, preserving business history and reserving their email
+         * Deactivate a user, preserving business history, their email and at least one active admin
          * @description Requires permission: `users:write`
          */
         delete: {
@@ -2246,7 +2246,7 @@ export interface paths {
         options?: never;
         head?: never;
         /**
-         * Update a user's name or role
+         * Update a user's name or role, preserving at least one active admin
          * @description Requires permission: `users:write`
          */
         patch: {

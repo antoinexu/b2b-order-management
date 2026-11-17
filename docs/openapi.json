@@ -3553,7 +3553,7 @@
         "tags": [
           "Users"
         ],
-        "summary": "Update a user's name or role",
+        "summary": "Update a user's name or role, preserving at least one active admin",
         "description": "Requires permission: `users:write`",
         "security": [
           {
@@ -3648,7 +3648,7 @@
         "tags": [
           "Users"
         ],
-        "summary": "Deactivate a user and revoke access, preserving business history and reserving their email",
+        "summary": "Deactivate a user, preserving business history, their email and at least one active admin",
         "description": "Requires permission: `users:write`",
         "security": [
           {
