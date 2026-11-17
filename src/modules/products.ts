@@ -4,7 +4,7 @@ import type { DB } from '../db/client';
 import { products } from '../db/schema';
 import { notFound } from '../lib/errors';
 import { doc } from '../lib/openapi';
-import { IdParams, paginated, PaginationQuery, z } from '../lib/zod';
+import { IdParams, MoneyCents, paginated, PaginationQuery, z } from '../lib/zod';
 import { auth, requirePermission } from '../middleware/auth';
 
 const ProductFields = {
@@ -12,11 +12,13 @@ const ProductFields = {
   name: z.string().trim().min(1).max(200),
   description: z.string().trim().max(2000).nullish(),
   unit: z.string().trim().min(1).max(20).optional(),
-  unitPriceCents: z.number().int().min(0),
+  unitPriceCents: MoneyCents,
 };
 
 const CreateProductBody = z.object(ProductFields).openapi('CreateProductRequest');
-const UpdateProductBody = z.object(ProductFields).partial().openapi('UpdateProductRequest');
+const UpdateProductBody = z.object(ProductFields).partial()
+  .refine((fields) => Object.values(fields).some((value) => value !== undefined), 'At least one update field is required')
+  .openapi('UpdateProductRequest', { minProperties: 1, description: 'At least one recognized update field is required.' });
 const ProductListQuery = PaginationQuery.extend({ q: z.string().trim().min(1).optional() });
 
 const Product = z

@@ -2,12 +2,12 @@ import cors from 'cors';
 import { sql } from 'drizzle-orm';
 import express, { Router } from 'express';
 import helmet from 'helmet';
-import pino from 'pino';
 import { pinoHttp } from 'pino-http';
 import swaggerUi from 'swagger-ui-express';
 import type { Config } from './config';
 import type { DB } from './db/client';
 import { buildOpenApiDocument } from './lib/openapi';
+import { createLogger } from './lib/logger';
 import { authenticate } from './middleware/auth';
 import { errorHandler, notFoundHandler } from './middleware/error';
 import { authRouter } from './modules/auth';
@@ -19,17 +19,25 @@ import { usersRouter } from './modules/users';
 
 export function createApp({ db, config }: { db: DB; config: Config }) {
   const app = express();
-  const logger = pino({ level: config.NODE_ENV === 'test' ? 'silent' : config.LOG_LEVEL });
+  const logger = createLogger(config);
 
   app.disable('x-powered-by');
+  // Behind a load balancer, trust its X-Forwarded-For so rate limiting sees real client IPs.
+  app.set('trust proxy', config.TRUST_PROXY);
   app.use(helmet());
   app.use(cors({ origin: config.CORS_ORIGIN === '*' ? true : config.CORS_ORIGIN.split(',') }));
   app.use(express.json({ limit: '1mb' }));
   app.use(pinoHttp({ logger }));
 
-  app.get('/health', async (_req, res) => {
-    await db.execute(sql`select 1`);
-    res.json({ status: 'ok' });
+  // 503 (not 500) when the database is unreachable, so orchestrators and load balancers mark the instance unhealthy.
+  app.get('/health', async (req, res) => {
+    try {
+      await db.execute(sql`select 1`);
+      res.json({ status: 'ok' });
+    } catch (err) {
+      req.log.warn({ err }, 'Health check failed: database unreachable');
+      res.status(503).json({ status: 'unavailable' });
+    }
   });
 
   const openApiDocument = buildOpenApiDocument();

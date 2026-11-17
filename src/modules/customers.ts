@@ -21,7 +21,9 @@ const CustomerFields = {
 };
 
 const CreateCustomerBody = z.object(CustomerFields).openapi('CreateCustomerRequest');
-const UpdateCustomerBody = z.object(CustomerFields).partial().openapi('UpdateCustomerRequest');
+const UpdateCustomerBody = z.object(CustomerFields).partial()
+  .refine((fields) => Object.values(fields).some((value) => value !== undefined), 'At least one update field is required')
+  .openapi('UpdateCustomerRequest', { minProperties: 1, description: 'At least one recognized update field is required.' });
 const CustomerListQuery = PaginationQuery.extend({ q: z.string().trim().min(1).optional() });
 
 export const Customer = z

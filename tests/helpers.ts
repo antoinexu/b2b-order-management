@@ -4,18 +4,19 @@ import { migrate } from 'drizzle-orm/pglite/migrator';
 import request from 'supertest';
 import type { App } from 'supertest/types';
 import { createApp } from '../src/app';
-import { config } from '../src/config';
+import { config, type Config } from '../src/config';
 import { MIGRATIONS_DIR, type DB } from '../src/db/client';
 import * as schema from '../src/db/schema';
 import type { UserRole } from '../src/db/schema';
 
 /** Spins up a fresh in-memory Postgres (PGlite), applies real migrations and builds the app. */
-export async function setupTestApp() {
+export async function setupTestApp(overrides: Partial<Config> = {}) {
   const client = new PGlite();
   const pglite = drizzle(client, { schema });
   await migrate(pglite, { migrationsFolder: MIGRATIONS_DIR });
   const db = pglite as unknown as DB;
-  const app = createApp({ db, config: { ...config, NODE_ENV: 'test' } });
+  // Suites register many organizations from one IP, so auth rate limiting is relaxed unless a test overrides it.
+  const app = createApp({ db, config: { ...config, NODE_ENV: 'test', AUTH_RATE_LIMIT_MAX: 10_000, ...overrides } });
   return { app, db, close: () => client.close() };
 }
 

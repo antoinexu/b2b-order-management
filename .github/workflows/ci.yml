@@ -28,6 +28,8 @@ jobs:
         run: docker build -t b2b-order-management:ci .
       - name: Smoke test with Postgres
         run: |
+          export JWT_SECRET="$(openssl rand -hex 48)"
+          echo "JWT_SECRET=$JWT_SECRET" >> "$GITHUB_ENV"
           docker compose up -d --build --wait
           curl --fail --retry 10 --retry-delay 2 --retry-all-errors http://localhost:3000/health
           curl --fail -X POST http://localhost:3000/api/v1/auth/register \

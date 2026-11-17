@@ -23,7 +23,7 @@ services:
     environment:
       DATABASE_URL: postgres://b2b:b2b@db:5432/b2b
       # Override in a .env file next to this compose file; required in production.
-      JWT_SECRET: ${JWT_SECRET:-change-me-to-a-long-random-string-at-least-32-chars}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET to a unique random secret of at least 32 characters}
       JWT_EXPIRES_IN: 8h
       LOG_LEVEL: info
       PORT: 3000

@@ -1,5 +1,6 @@
 import { extendZodWithOpenApi } from '@asteasolutions/zod-to-openapi';
 import { z } from 'zod';
+import { MAX_MONEY_CENTS } from './pricing';
 
 extendZodWithOpenApi(z);
 
@@ -7,6 +8,7 @@ export { z };
 
 export const Uuid = z.uuid();
 export const IdParams = z.object({ id: z.uuid() });
+export const MoneyCents = z.number().int().min(0).max(MAX_MONEY_CENTS);
 
 export const PaginationQuery = z.object({
   page: z.coerce.number().int().min(1).default(1),

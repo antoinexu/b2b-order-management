@@ -52,6 +52,7 @@ export function doc(o: DocOptions) {
       ...(o.public ? {} : { 401: errorResponse('Missing or invalid token'), 403: errorResponse('Insufficient permissions') }),
       ...(o.params ? { 404: errorResponse('Resource not found') } : {}),
       409: errorResponse('Conflict or invalid state transition'),
+      ...(o.public ? { 429: errorResponse('Too many attempts from this IP (rate limited)') } : {}),
     },
   });
 }

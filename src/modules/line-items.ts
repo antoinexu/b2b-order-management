@@ -3,7 +3,7 @@ import type { DB } from '../db/client';
 import { customers, organizations, products } from '../db/schema';
 import { badRequest, notFound } from '../lib/errors';
 import { computeTotals, formatDocumentNumber, lineTotalCents, type Totals } from '../lib/pricing';
-import { z } from '../lib/zod';
+import { MoneyCents, z } from '../lib/zod';
 
 export type Tx = Parameters<Parameters<DB['transaction']>[0]>[0];
 export type DbOrTx = DB | Tx;
@@ -13,7 +13,7 @@ export const LineItemInput = z
     productId: z.uuid().optional().openapi({ description: 'Catalog product; description and price default from it' }),
     description: z.string().trim().min(1).max(500).optional(),
     quantity: z.number().int().min(1).max(1_000_000),
-    unitPriceCents: z.number().int().min(0).optional().openapi({ description: 'Overrides the catalog price' }),
+    unitPriceCents: MoneyCents.optional().openapi({ description: 'Overrides the catalog price' }),
     discountBps: z.number().int().min(0).max(10_000).default(0).openapi({ description: 'Line discount, 100 = 1%' }),
   })
   .openapi('LineItemInput');

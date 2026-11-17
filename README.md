@@ -21,12 +21,16 @@ approval lifecycle, quote-to-order conversion, order fulfilment tracking and rol
   each line item, so later catalog changes never alter existing quotes or orders.
 - **Concurrency-safe:** status transitions lock their rows inside transactions; document numbers are allocated atomically.
 - **API contract:** OpenAPI 3 generated from the same Zod schemas that validate requests, so the docs can't drift from the code.
-- **Tests:** 49 unit and integration tests run against a real Postgres engine (PGlite, running in the Node process).
+- **Tests:** unit and integration tests cover business flows, security boundaries and database upgrades using PGlite (an in-process Postgres engine).
   You don't need Docker to run them.
 
 ## Quick start
 
 ### With Docker (API + PostgreSQL)
+
+Copy `.env.example` to `.env` and replace `JWT_SECRET` with a unique random secret of at least 32 characters.
+Generate one with `openssl rand -hex 48`, or the Node command in `.env.example`.
+Compose requires the variable; the production API also rejects the repository's example secrets.
 
 ```bash
 docker compose up --build
@@ -47,6 +51,9 @@ docker compose up -d db       # or use any local PostgreSQL
 npm run dev                   # http://localhost:3000, auto-reload
 npm run db:seed               # optional demo data
 ```
+
+Local commands load `.env` automatically; variables already set in the shell or container take priority.
+The application requires Node.js 22 or later.
 
 Demo users created by the seed script (password `Password123!`):
 `admin@acme.example`, `manager@acme.example`, `sales@acme.example`, `viewer@acme.example`.
@@ -98,6 +105,16 @@ Errors share one shape:
 { "error": { "code": "INVALID_STATE", "message": "Cannot change order status from 'pending' to 'delivered'" } }
 ```
 
+Customer, product and user PATCH requests must contain at least one recognized update field; empty or
+unknown-only objects return `400 VALIDATION_ERROR`.
+
+`DELETE /users/{id}` deactivates the account: old tokens and password login stop working, and the user
+is hidden from user lists. Quotes, orders and status history keep their author references. Deactivated
+users cannot be edited through this API, and their email remains reserved to the original account.
+
+Prices, line totals, subtotals, tax and document totals must each fit in `0..2147483647` cents.
+Inputs or calculated amounts outside this range return `400`; failed writes leave existing documents unchanged.
+
 ### Example flow
 
 ```bash
@@ -135,6 +152,11 @@ tests/                 Vitest + Supertest suites on PGlite (in-process Postgres)
 ## Design decisions
 
 - **Integer money.** Amounts are stored in cents and rates in basis points (`825` = 8.25%), with rounding done once per line and once for tax.
+- **Exact calculation and storage limits.** BigInt intermediates preserve integer precision before rounding; values are checked against the database's 32-bit money limit before writes.
+- **Account removal preserves history.** A nullable `deleted_at` timestamp disables access without deleting users referenced by business records. Startup applies the additive migration to existing databases.
+- **Credential-safe logging.** Request logs remove authorization and cookie headers, including response cookies.
+- **Brute-force protection.** Login and registration are rate limited per IP (`429 RATE_LIMITED`). Only failed logins count toward the limit. Unknown emails still go through scrypt, so response time doesn't reveal which accounts exist. The limiter keeps its counts in memory; with several instances it would need a shared store such as Redis.
+- **Honest health checks.** `/health` returns `503` when the database is unreachable, so container orchestrators and load balancers take the instance out of rotation.
 - **Prices copied onto line items.** Each line item stores its own description and unit price, so a quote or order reads the same forever.
 - **The tenant comes from the server, never the client.** The organization is resolved from the authenticated user on every request and added to every query.
 - **Explicit state machines.** Quote and order transitions are declared in code, run inside a transaction with a row lock, and invalid moves return `409 INVALID_STATE`.

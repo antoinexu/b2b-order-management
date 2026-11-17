@@ -1,5 +1,6 @@
 import { eq } from 'drizzle-orm';
 import { Router, type RequestHandler } from 'express';
+import { randomBytes } from 'node:crypto';
 import type { Config } from '../config';
 import type { DB } from '../db/client';
 import { organizations, users, USER_ROLES } from '../db/schema';
@@ -9,6 +10,10 @@ import { hashPassword, verifyPassword } from '../lib/password';
 import { ROLE_PERMISSIONS } from '../lib/permissions';
 import { z } from '../lib/zod';
 import { auth, signToken } from '../middleware/auth';
+import { authRateLimiter } from '../middleware/rate-limit';
+
+/** Hash of a random throwaway password, verified against when the email is unknown. */
+const dummyPasswordHash = hashPassword(randomBytes(32).toString('hex'));
 
 export const Email = z.email().transform((e) => e.toLowerCase());
 export const Password = z.string().min(8, 'Password must be at least 8 characters').max(128);
@@ -57,7 +62,7 @@ export function authRouter(db: DB, config: Config, authenticate: RequestHandler)
   const router = Router();
   const issue = (u: typeof users.$inferSelect) => signToken(u, config.JWT_SECRET, config.JWT_EXPIRES_IN);
 
-  router.post('/register', async (req, res) => {
+  router.post('/register', authRateLimiter(config, { countSuccessful: true }), async (req, res) => {
     const body = RegisterBody.parse(req.body);
     const passwordHash = await hashPassword(body.password);
 
@@ -75,11 +80,13 @@ export function authRouter(db: DB, config: Config, authenticate: RequestHandler)
     res.status(201).json({ token: issue(user), user: toPublicUser(user) });
   });
 
-  router.post('/login', async (req, res) => {
+  router.post('/login', authRateLimiter(config, { countSuccessful: false }), async (req, res) => {
     const body = LoginBody.parse(req.body);
     const [user] = await db.select().from(users).where(eq(users.email, body.email));
-    // Same error for unknown email and wrong password to avoid account enumeration.
-    if (!user || !(await verifyPassword(body.password, user.passwordHash))) {
+    // Always run scrypt, even for unknown emails, so response time doesn't reveal which emails exist.
+    // Combined with the identical error message, this prevents account enumeration.
+    const passwordOk = await verifyPassword(body.password, user?.passwordHash ?? (await dummyPasswordHash));
+    if (!user || user.deletedAt || !passwordOk) {
       throw unauthorized('Invalid email or password');
     }
     res.json({ token: issue(user), user: toPublicUser(user) });

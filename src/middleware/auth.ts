@@ -48,11 +48,11 @@ export function authenticate(db: DB, secret: string): RequestHandler {
     }
 
     const [user] = await db
-      .select({ id: users.id, organizationId: users.organizationId, role: users.role })
+      .select({ id: users.id, organizationId: users.organizationId, role: users.role, deletedAt: users.deletedAt })
       .from(users)
       .where(eq(users.id, payload.sub))
       .limit(1);
-    if (!user || user.organizationId !== payload.org) throw unauthorized('User no longer exists');
+    if (!user || user.deletedAt || user.organizationId !== payload.org) throw unauthorized('User no longer exists');
 
     req.auth = { userId: user.id, organizationId: user.organizationId, role: user.role };
     next();

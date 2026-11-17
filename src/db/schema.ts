@@ -32,6 +32,7 @@ export const users = pgTable('users', {
   name: text('name').notNull(),
   passwordHash: text('password_hash').notNull(),
   role: userRole('role').notNull().default('viewer'),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
   ...timestamps,
 }, (t) => [uniqueIndex('users_email_uq').on(t.email)]);
 

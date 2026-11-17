@@ -1,3 +1,5 @@
+import { badRequest } from './errors';
+
 /**
  * Money is stored as integer cents; rates/discounts as basis points (1 bp = 0.01%).
  * Integer math avoids floating-point rounding errors in totals.
@@ -14,16 +16,31 @@ export interface Totals {
   totalCents: number;
 }
 
-const BPS = 10_000;
+export const MAX_MONEY_CENTS = 2_147_483_647;
+const BPS = 10_000n;
+
+function checkedMoney(value: bigint, field: string): number {
+  if (value < 0n || value > BigInt(MAX_MONEY_CENTS)) {
+    throw badRequest(`${field} must be between 0 and ${MAX_MONEY_CENTS} cents`);
+  }
+  return Number(value);
+}
+
+const roundBps = (value: bigint) => (value + BPS / 2n) / BPS;
 
 export function lineTotalCents({ quantity, unitPriceCents, discountBps }: LineInput): number {
-  return Math.round((quantity * unitPriceCents * (BPS - discountBps)) / BPS);
+  const amount = BigInt(quantity) * BigInt(unitPriceCents) * (BPS - BigInt(discountBps));
+  return checkedMoney(roundBps(amount), 'Line total');
 }
 
 export function computeTotals(lineTotals: number[], taxRateBps: number): Totals {
-  const subtotalCents = lineTotals.reduce((sum, n) => sum + n, 0);
-  const taxCents = Math.round((subtotalCents * taxRateBps) / BPS);
-  return { subtotalCents, taxCents, totalCents: subtotalCents + taxCents };
+  const subtotal = lineTotals.reduce((sum, n) => sum + BigInt(n), 0n);
+  const tax = roundBps(subtotal * BigInt(taxRateBps));
+  return {
+    subtotalCents: checkedMoney(subtotal, 'Subtotal'),
+    taxCents: checkedMoney(tax, 'Tax'),
+    totalCents: checkedMoney(subtotal + tax, 'Total'),
+  };
 }
 
 export function formatDocumentNumber(prefix: string, seq: number): string {

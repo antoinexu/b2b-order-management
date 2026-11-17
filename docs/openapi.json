@@ -333,7 +333,9 @@
             "nullable": true,
             "maxLength": 2000
           }
-        }
+        },
+        "minProperties": 1,
+        "description": "At least one recognized update field is required."
       },
       "OrderSummary": {
         "type": "object",
@@ -596,6 +598,7 @@
           "unitPriceCents": {
             "type": "integer",
             "minimum": 0,
+            "maximum": 2147483647,
             "description": "Overrides the catalog price"
           },
           "discountBps": {
@@ -700,7 +703,8 @@
           },
           "unitPriceCents": {
             "type": "integer",
-            "minimum": 0
+            "minimum": 0,
+            "maximum": 2147483647
           }
         },
         "required": [
@@ -734,9 +738,12 @@
           },
           "unitPriceCents": {
             "type": "integer",
-            "minimum": 0
+            "minimum": 0,
+            "maximum": 2147483647
           }
-        }
+        },
+        "minProperties": 1,
+        "description": "At least one recognized update field is required."
       },
       "QuoteSummary": {
         "type": "object",
@@ -980,7 +987,9 @@
               "viewer"
             ]
           }
-        }
+        },
+        "minProperties": 1,
+        "description": "At least one recognized update field is required."
       }
     },
     "parameters": {}
@@ -1033,6 +1042,16 @@
                 }
               }
             }
+          },
+          "429": {
+            "description": "Too many attempts from this IP (rate limited)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -1077,6 +1096,16 @@
           },
           "409": {
             "description": "Conflict or invalid state transition",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many attempts from this IP (rate limited)",
             "content": {
               "application/json": {
                 "schema": {
@@ -3604,7 +3633,7 @@
         "tags": [
           "Users"
         ],
-        "summary": "Remove a user",
+        "summary": "Deactivate a user and revoke access, preserving business history and reserving their email",
         "description": "Requires permission: `users:write`",
         "security": [
           {
