@@ -2,7 +2,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { Plus, Search, Trash2 } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { toast } from 'sonner';
-import { api, errorMessage, unwrap } from '@/api/client';
+import { errorMessage, unwrap } from '@/api/client';
 import type { Customer } from '@/api/types';
 import { useAuth } from '@/auth/AuthContext';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
@@ -16,11 +16,12 @@ import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
 import { useDebounced } from '@/lib/use-debounced';
+import { usePageBounds } from '@/lib/use-page-bounds';
 
 const PAGE_SIZE = 20;
 
 export function CustomersPage() {
-  const { can } = useAuth();
+  const { api, can } = useAuth();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const q = useDebounced(search.trim());
@@ -32,6 +33,7 @@ export function CustomersPage() {
     placeholderData: keepPreviousData,
   });
 
+  usePageBounds(page, PAGE_SIZE, customers.isSuccess && !customers.isPlaceholderData ? customers.data.meta.total : undefined, setPage);
   const canWrite = can('customers:write');
 
   return (
@@ -53,7 +55,7 @@ export function CustomersPage() {
         />
       </div>
 
-      {customers.isPending ? <TableSkeleton /> : customers.isError ? (
+      {customers.isPending || (customers.isSuccess && customers.data.data.length === 0 && customers.data.meta.total > 0) ? <TableSkeleton /> : customers.isError ? (
         <ErrorState error={customers.error} onRetry={() => customers.refetch()} />
       ) : customers.data.data.length === 0 ? (
         <EmptyState
@@ -90,9 +92,9 @@ export function CustomersPage() {
               </TableBody>
             </Table>
           </div>
-          <Pagination page={page} pageSize={PAGE_SIZE} total={customers.data.meta.total} onPageChange={setPage} />
         </>
       )}
+      {customers.isSuccess && <Pagination page={page} pageSize={PAGE_SIZE} total={customers.data.meta.total} onPageChange={setPage} />}
 
       {editing && (
         <CustomerDialog
@@ -108,6 +110,7 @@ export function CustomersPage() {
 const empty = { companyName: '', contactName: '', email: '', phone: '', billingAddress: '', shippingAddress: '', paymentTermsDays: '30', notes: '' };
 
 function CustomerDialog({ customer, canDelete, onClose }: { customer: Customer | null; canDelete: boolean; onClose: () => void }) {
+  const { api } = useAuth();
   const queryClient = useQueryClient();
   const [form, setForm] = useState(() => customer ? {
     companyName: customer.companyName,

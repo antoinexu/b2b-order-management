@@ -9,7 +9,7 @@ export default defineConfig({
   server: {
     port: 5173,
     // In development the API runs on :3000; proxying keeps requests same-origin (no CORS setup needed).
-    proxy: { '/api': 'http://localhost:3000' },
+    proxy: { '/api': process.env.API_PROXY_TARGET ?? 'http://localhost:3000' },
   },
   test: { include: ['src/**/*.test.{ts,tsx}'], environment: 'node' },
 });

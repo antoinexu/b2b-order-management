@@ -1,7 +1,7 @@
 import { useMutation } from '@tanstack/react-query';
 import { useState, type FormEvent, type ReactNode } from 'react';
 import { Link, Navigate } from 'react-router';
-import { api, errorMessage, unwrap } from '@/api/client';
+import { errorMessage, unwrap } from '@/api/client';
 import { useAuth } from '@/auth/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -43,7 +43,7 @@ function FormError({ error }: { error: unknown }) {
 }
 
 export function LoginPage() {
-  const { signIn } = useAuth();
+  const { api, signIn } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const login = useMutation({
@@ -94,7 +94,7 @@ export function LoginPage() {
 }
 
 export function RegisterPage() {
-  const { signIn } = useAuth();
+  const { api, signIn } = useAuth();
   const [form, setForm] = useState({ organizationName: '', name: '', email: '', password: '' });
   const register = useMutation({
     mutationFn: () => unwrap(api.POST('/auth/register', { body: form })),

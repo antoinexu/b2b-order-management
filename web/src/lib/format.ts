@@ -1,3 +1,5 @@
+import { isMoneyCents } from './pricing';
+
 const moneyFormatters = new Map<string, Intl.NumberFormat>();
 
 /** Formats integer cents as currency, e.g. 123456 -> "$1,234.56". */
@@ -15,7 +17,8 @@ export function parseMoneyToCents(input: string): number | null {
   const cleaned = input.replace(/[$,\s]/g, '');
   if (!/^\d+(\.\d{0,2})?$/.test(cleaned)) return null;
   const [whole, fraction = ''] = cleaned.split('.');
-  return Number(whole) * 100 + Number(fraction.padEnd(2, '0'));
+  const cents = Number(whole) * 100 + Number(fraction.padEnd(2, '0'));
+  return isMoneyCents(cents) ? cents : null;
 }
 
 export const centsToInput = (cents: number) => (cents / 100).toFixed(2);

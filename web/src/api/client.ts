@@ -1,15 +1,9 @@
 import createClient, { type Middleware } from 'openapi-fetch';
 import type { paths } from './schema';
+import { assertCurrentSession, sessionStore, type SessionSnapshot } from '@/auth/session';
 
 /** API origin. Empty in development: Vite proxies /api to the backend on :3000. */
 const API_ORIGIN = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
-const TOKEN_KEY = 'b2b.token';
-
-export const tokenStorage = {
-  get: () => localStorage.getItem(TOKEN_KEY),
-  set: (token: string) => localStorage.setItem(TOKEN_KEY, token),
-  clear: () => localStorage.removeItem(TOKEN_KEY),
-};
 
 /** Error carrying the API's `{ error: { code, message, details } }` payload. */
 export class ApiError extends Error {
@@ -26,24 +20,27 @@ export class ApiError extends Error {
   }
 }
 
-let onUnauthorized: () => void = () => {};
-export const setUnauthorizedHandler = (handler: () => void) => { onUnauthorized = handler; };
-
-const authMiddleware: Middleware = {
-  onRequest({ request }) {
-    const token = tokenStorage.get();
-    if (token) request.headers.set('Authorization', `Bearer ${token}`);
-    return request;
-  },
-  onResponse({ response, request }) {
-    // An expired or revoked token anywhere except the login call itself ends the session.
-    if (response.status === 401 && !request.url.endsWith('/auth/login')) onUnauthorized();
-    return response;
-  },
-};
-
-export const api = createClient<paths>({ baseUrl: `${API_ORIGIN}/api/v1` });
-api.use(authMiddleware);
+/** A client belongs to the rendered session, including mutations created by old forms. */
+export function createSessionClient(session: SessionSnapshot) {
+  const authMiddleware: Middleware = {
+    onRequest({ request }) {
+      assertCurrentSession(session);
+      if (session.token) request.headers.set('Authorization', `Bearer ${session.token}`);
+      return request;
+    },
+    onResponse({ response, request }) {
+      assertCurrentSession(session);
+      if (response.status === 401 && !request.url.endsWith('/auth/login')) sessionStore.clearIfCurrent(session);
+      return response;
+    },
+  };
+  const client = createClient<paths>({
+    baseUrl: `${API_ORIGIN}/api/v1`,
+    fetch: (request) => fetch(request, { signal: AbortSignal.any([request.signal, session.signal]) }),
+  });
+  client.use(authMiddleware);
+  return client;
+}
 
 interface ErrorBody { error?: { code?: string; message?: string; details?: unknown } }
 

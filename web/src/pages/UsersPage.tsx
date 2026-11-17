@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { toast } from 'sonner';
-import { api, errorMessage, unwrap } from '@/api/client';
+import { errorMessage, unwrap } from '@/api/client';
 import { USER_ROLES, type User, type UserRole } from '@/api/types';
 import { useAuth } from '@/auth/AuthContext';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
@@ -37,7 +37,7 @@ function RoleSelect({ id, value, onChange, disabled }: { id?: string; value: Use
 }
 
 export function UsersPage() {
-  const { can, me } = useAuth();
+  const { api, can, me } = useAuth();
   const queryClient = useQueryClient();
   const [inviting, setInviting] = useState(false);
   const canWrite = can('users:write');
@@ -123,6 +123,7 @@ export function UsersPage() {
 }
 
 function InviteDialog({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+  const { api } = useAuth();
   const [form, setForm] = useState({ name: '', email: '', password: '', role: 'sales' as UserRole });
   const create = useMutation({
     mutationFn: () => unwrap(api.POST('/users', { body: form })),

@@ -2,7 +2,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { Plus, Search, Trash2 } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { toast } from 'sonner';
-import { api, errorMessage, unwrap } from '@/api/client';
+import { errorMessage, unwrap } from '@/api/client';
 import type { Product } from '@/api/types';
 import { useAuth } from '@/auth/AuthContext';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
@@ -17,11 +17,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { centsToInput, formatMoney, parseMoneyToCents } from '@/lib/format';
 import { useDebounced } from '@/lib/use-debounced';
+import { usePageBounds } from '@/lib/use-page-bounds';
 
 const PAGE_SIZE = 20;
 
 export function ProductsPage() {
-  const { can } = useAuth();
+  const { api, can } = useAuth();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const q = useDebounced(search.trim());
@@ -34,6 +35,7 @@ export function ProductsPage() {
     placeholderData: keepPreviousData,
   });
 
+  usePageBounds(page, PAGE_SIZE, products.isSuccess && !products.isPlaceholderData ? products.data.meta.total : undefined, setPage);
   return (
     <>
       <PageHeader
@@ -48,7 +50,7 @@ export function ProductsPage() {
           onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
       </div>
 
-      {products.isPending ? <TableSkeleton /> : products.isError ? (
+      {products.isPending || (products.isSuccess && products.data.data.length === 0 && products.data.meta.total > 0) ? <TableSkeleton /> : products.isError ? (
         <ErrorState error={products.error} onRetry={() => products.refetch()} />
       ) : products.data.data.length === 0 ? (
         <EmptyState title={q ? 'No matching products' : 'No products yet'} description={q ? 'Try a different search.' : 'Add products to quote from your catalog.'} />
@@ -76,9 +78,9 @@ export function ProductsPage() {
               </TableBody>
             </Table>
           </div>
-          <Pagination page={page} pageSize={PAGE_SIZE} total={products.data.meta.total} onPageChange={setPage} />
         </>
       )}
+      {products.isSuccess && <Pagination page={page} pageSize={PAGE_SIZE} total={products.data.meta.total} onPageChange={setPage} />}
 
       {editing && <ProductDialog product={editing === 'new' ? null : editing} onClose={() => setEditing(null)} />}
     </>
@@ -86,6 +88,7 @@ export function ProductsPage() {
 }
 
 function ProductDialog({ product, onClose }: { product: Product | null; onClose: () => void }) {
+  const { api } = useAuth();
   const queryClient = useQueryClient();
   const [form, setForm] = useState({
     sku: product?.sku ?? '',

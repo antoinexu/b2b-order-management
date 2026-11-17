@@ -1,6 +1,6 @@
 import { useQueries, useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router';
-import { api, unwrap } from '@/api/client';
+import { unwrap } from '@/api/client';
 import type { OrderStatus } from '@/api/types';
 import { useAuth } from '@/auth/AuthContext';
 import { PageHeader } from '@/components/PageHeader';
@@ -18,7 +18,7 @@ const ORDER_STATS: { status: OrderStatus; label: string; hint: string }[] = [
 ];
 
 export function DashboardPage() {
-  const { me } = useAuth();
+  const { api, me } = useAuth();
 
   const orderCounts = useQueries({
     queries: ORDER_STATS.map(({ status }) => ({

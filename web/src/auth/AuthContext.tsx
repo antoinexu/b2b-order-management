@@ -1,12 +1,16 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { api, setUnauthorizedHandler, tokenStorage, unwrap } from '@/api/client';
+import { useQuery } from '@tanstack/react-query';
+import { createContext, useCallback, useContext, useMemo, type ReactNode } from 'react';
+import { createSessionClient, unwrap } from '@/api/client';
 import type { Me, Permission } from '@/api/types';
+import { assertCurrentSession, sessionStore, type SessionSnapshot } from './session';
 
 interface AuthState {
   token: string | null;
   me: Me | undefined;
   isLoading: boolean;
+  error: Error | null;
+  retry: () => void;
+  api: ReturnType<typeof createSessionClient>;
   signIn: (token: string) => void;
   signOut: () => void;
   can: (permission: Permission) => boolean;
@@ -14,42 +18,38 @@ interface AuthState {
 
 const AuthContext = createContext<AuthState | null>(null);
 
-export function AuthProvider({ children }: { children: ReactNode }) {
-  const queryClient = useQueryClient();
-  const [token, setToken] = useState(() => tokenStorage.get());
-
-  const signOut = useCallback(() => {
-    tokenStorage.clear();
-    setToken(null);
-    queryClient.clear(); // never show one user's cached data to the next
-  }, [queryClient]);
-
+export function AuthProvider({ session, children }: { session: SessionSnapshot; children: ReactNode }) {
+  const { token } = session;
+  const api = useMemo(() => createSessionClient(session), [session]);
+  const signOut = useCallback(() => sessionStore.clearIfCurrent(session), [session]);
   const signIn = useCallback((next: string) => {
-    queryClient.clear();
-    tokenStorage.set(next);
-    setToken(next);
-  }, [queryClient]);
-
-  useEffect(() => setUnauthorizedHandler(signOut), [signOut]);
+    assertCurrentSession(session);
+    sessionStore.setToken(next);
+  }, [session]);
 
   const meQuery = useQuery({
     queryKey: ['me', token],
-    queryFn: () => unwrap(api.GET('/auth/me')),
+    queryFn: ({ signal }) => unwrap(api.GET('/auth/me', { signal })),
     enabled: !!token,
     staleTime: 60_000,
   });
 
+  const { refetch } = meQuery;
+  const retry = useCallback(() => { void refetch(); }, [refetch]);
   const value = useMemo<AuthState>(() => {
     const permissions = new Set(meQuery.data?.permissions ?? []);
     return {
       token,
       me: meQuery.data,
       isLoading: !!token && meQuery.isPending,
+      error: meQuery.error,
+      retry,
+      api,
       signIn,
       signOut,
       can: (permission) => permissions.has(permission),
     };
-  }, [token, meQuery.data, meQuery.isPending, signIn, signOut]);
+  }, [token, meQuery.data, meQuery.isPending, meQuery.error, retry, api, signIn, signOut]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

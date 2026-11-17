@@ -3,7 +3,7 @@ import { ArrowRightLeft, Check, Pencil, Plus, Send, Trash2, X } from 'lucide-rea
 import { useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { toast } from 'sonner';
-import { api, unwrap } from '@/api/client';
+import { unwrap } from '@/api/client';
 import { QUOTE_STATUSES, type QuoteStatus } from '@/api/types';
 import { useAuth } from '@/auth/AuthContext';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
@@ -26,7 +26,7 @@ import { formatDate, formatMoney } from '@/lib/format';
 const PAGE_SIZE = 20;
 
 export function QuotesPage() {
-  const { can } = useAuth();
+  const { api, can } = useAuth();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const status = (params.get('status') ?? '') as QuoteStatus | '';
@@ -94,6 +94,7 @@ const toQuoteBody = (d: DocumentDraft) => ({
 });
 
 export function QuoteNewPage() {
+  const { api } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const create = useMutation({
@@ -115,6 +116,7 @@ export function QuoteNewPage() {
 }
 
 function useQuote(id: string) {
+  const { api } = useAuth();
   return useQuery({
     queryKey: ['quotes', id],
     queryFn: () => unwrap(api.GET('/quotes/{id}', { params: { path: { id } } })),
@@ -122,6 +124,7 @@ function useQuote(id: string) {
 }
 
 export function QuoteEditPage() {
+  const { api } = useAuth();
   const { id = '' } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -152,7 +155,7 @@ export function QuoteDetailPage() {
   const { id = '' } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { can } = useAuth();
+  const { api, can } = useAuth();
   const quote = useQuote(id);
   const [converting, setConverting] = useState(false);
 
@@ -224,6 +227,7 @@ export function QuoteDetailPage() {
 }
 
 function ConvertDialog({ quoteId, onClose }: { quoteId: string; onClose: () => void }) {
+  const { api } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [poNumber, setPoNumber] = useState('');

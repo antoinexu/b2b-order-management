@@ -3,9 +3,10 @@ import { createBrowserRouter, Link, Navigate, Outlet, useLocation } from 'react-
 import type { Permission } from '@/api/types';
 import { useAuth } from '@/auth/AuthContext';
 import { AppLayout } from '@/components/layout/AppLayout';
-import { buttonVariants } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/skeleton';
+import { ErrorState } from '@/components/States';
 import { LoginPage, RegisterPage } from '@/pages/auth/AuthPages';
 
 // Route-level code splitting: each page is downloaded the first time it is visited.
@@ -28,13 +29,21 @@ function PageFallback() {
 }
 
 function RequireAuth() {
-  const { token, me, isLoading } = useAuth();
+  const { token, me, isLoading, error, retry, signOut } = useAuth();
   const location = useLocation();
   if (!token) return <Navigate to="/login" replace state={{ from: location }} />;
-  if (isLoading || !me) {
+  if (isLoading) {
     return (
       <div className="grid min-h-svh place-items-center" aria-busy="true">
         <Skeleton className="h-8 w-48" />
+      </div>
+    );
+  }
+  if (!me) {
+    return (
+      <div className="mx-auto grid min-h-svh max-w-lg content-center gap-4 px-4">
+        <ErrorState error={error ?? new Error('Unable to load your account.')} onRetry={retry} />
+        <Button variant="outline" onClick={signOut}>Sign out</Button>
       </div>
     );
   }

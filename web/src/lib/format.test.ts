@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { formatBps, formatDate, formatMoney, parseMoneyToCents, parsePercentToBps } from './format';
-import { computeTotals, lineTotalCents } from './pricing';
+import { computeTotals, lineTotalCents, MAX_MONEY_CENTS, MAX_QUANTITY } from './pricing';
 
 describe('money parsing and formatting', () => {
   it.each([
@@ -21,6 +21,13 @@ describe('money parsing and formatting', () => {
   it('formats cents as currency', () => {
     expect(formatMoney(123456)).toBe('$1,234.56');
     expect(formatMoney(5, 'EUR')).toBe('€0.05');
+  });
+
+  it('accepts the database limit and rejects unsafe or oversized input', () => {
+    expect(parseMoneyToCents('21474836.47')).toBe(MAX_MONEY_CENTS);
+    for (const input of ['21474836.48', '9007199254740993', '9'.repeat(310), 'Infinity', 'NaN']) {
+      expect(parseMoneyToCents(input)).toBeNull();
+    }
   });
 });
 
@@ -53,5 +60,22 @@ describe('client price preview matches the server', () => {
 
   it('computes subtotal, tax and total', () => {
     expect(computeTotals([10_000, 5_000], 825)).toEqual({ subtotalCents: 15_000, taxCents: 1238, totalCents: 16_238 });
+  });
+
+  it('rejects invalid quantities and non-finite amounts without throwing', () => {
+    for (const quantity of [0, 1.5, MAX_QUANTITY + 1, Infinity, NaN]) expect(lineTotalCents(quantity, 100, 0)).toBeNull();
+    for (const price of [Infinity, NaN, MAX_MONEY_CENTS + 1, -1]) expect(lineTotalCents(1, price, 0)).toBeNull();
+    expect(lineTotalCents(1, 100, 10_001)).toBeNull();
+    expect(computeTotals([Infinity], 0)).toBeNull();
+  });
+
+  it('checks discounted line totals, subtotal and tax against the storage limit', () => {
+    expect(lineTotalCents(MAX_QUANTITY, 3000, 0)).toBeNull();
+    expect(lineTotalCents(MAX_QUANTITY, 3000, 5000)).toBe(1_500_000_000);
+    expect(lineTotalCents(1, MAX_MONEY_CENTS, 0)).toBe(MAX_MONEY_CENTS);
+    expect(computeTotals([MAX_MONEY_CENTS], 0)?.totalCents).toBe(MAX_MONEY_CENTS);
+    expect(computeTotals([1_500_000_000, 1_500_000_000], 0)).toBeNull();
+    expect(computeTotals([2_000_000_000], 1000)).toBeNull();
+    expect(computeTotals([1], 10_001)).toBeNull();
   });
 });

@@ -3,7 +3,7 @@ import { Plus } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { toast } from 'sonner';
-import { api, unwrap } from '@/api/client';
+import { unwrap } from '@/api/client';
 import { ORDER_STATUSES, ORDER_TRANSITIONS, type OrderStatus } from '@/api/types';
 import { useAuth } from '@/auth/AuthContext';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
@@ -33,7 +33,7 @@ const ACTION_LABEL: Record<OrderStatus, string> = {
 };
 
 export function OrdersPage() {
-  const { can } = useAuth();
+  const { api, can } = useAuth();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const status = (params.get('status') ?? '') as OrderStatus | '';
@@ -99,6 +99,7 @@ export function OrdersPage() {
 }
 
 export function OrderNewPage() {
+  const { api } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const create = useMutation({
@@ -123,7 +124,7 @@ export function OrderNewPage() {
 
 export function OrderDetailPage() {
   const { id = '' } = useParams();
-  const { can } = useAuth();
+  const { api, can } = useAuth();
   const queryClient = useQueryClient();
   const [note, setNote] = useState('');
 
