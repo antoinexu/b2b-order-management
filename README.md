@@ -34,6 +34,7 @@ Sign in with one click as **Admin**, **Manager**, **Sales** or **Viewer** to see
 - **RBAC:** four roles with a permission matrix. Role changes and user removal take effect immediately, without waiting for the token to expire.
 - **Customers & products:** CRUD, search, pagination, per-tenant unique SKUs.
 - **Quotes:** draft → sent → accepted / rejected / expired, line-item discounts, tax, sequential numbers (`Q-000001`).
+  A sent quote counts as expired as soon as its `validUntil` date has passed, even if nobody has acted on it.
 - **Orders:** created directly or converted from an accepted quote (at most once per quote), with lifecycle
   pending → confirmed → shipped → delivered (or cancelled) and a full status history.
 - **Correct money math:** integer cents and basis points, so totals have no floating-point drift. Prices are copied onto
@@ -41,7 +42,8 @@ Sign in with one click as **Admin**, **Manager**, **Sales** or **Viewer** to see
 - **Concurrency-safe:** status transitions lock their rows inside transactions; document numbers are allocated atomically.
 - **API contract:** OpenAPI 3 generated from the same Zod schemas that validate requests, so the docs can't drift from the code.
 - **Tests:** unit and integration tests cover business flows, security boundaries and database upgrades using PGlite (an in-process Postgres engine).
-  You don't need Docker to run them.
+  You don't need Docker to run them. Concurrency tests (racing creates, conversions and status changes) run against a
+  real Postgres server in CI, or locally when `TEST_DATABASE_URL` points at an empty test database.
 
 ### Web app
 
@@ -216,6 +218,8 @@ web/                   React frontend (see web/README.md)
 - **Honest health checks.** `/health` returns `503` when the database is unreachable, so container orchestrators and load balancers take the instance out of rotation.
 - **Prices copied onto line items.** Each line item stores its own description and unit price, so a quote or order reads the same forever.
 - **The tenant comes from the server, never the client.** The organization is resolved from the authenticated user on every request and added to every query.
+- **Expiry is derived, not scheduled.** Reads report a sent quote past `validUntil` as `expired`, and status filters use the same rule, so no background job is needed and nothing shows a stale "sent" quote. Accepting such a quote stores the `expired` status.
+- **Dates are UTC.** `validUntil` is a calendar date compared with the current UTC date, so a quote stays valid through the end of that day in UTC. Organizations in other time zones see it expire a few hours early or late; a per-organization time zone would fix that.
 - **Explicit state machines.** Quote and order transitions are declared in code, run inside a transaction with a row lock, and invalid moves return `409 INVALID_STATE`.
 - **Testing against real Postgres semantics.** PGlite runs the real migrations, so constraints, enums and transactions behave the same in tests as in production.
 

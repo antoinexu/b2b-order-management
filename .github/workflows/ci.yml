@@ -9,6 +9,22 @@ jobs:
   api:
     name: API
     runs-on: ubuntu-latest
+    services:
+      # Real Postgres for tests/concurrency.test.ts; the other suites use in-process PGlite.
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: b2b
+          POSTGRES_PASSWORD: b2b
+          POSTGRES_DB: b2b_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U b2b -d b2b_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://b2b:b2b@localhost:5432/b2b_test
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

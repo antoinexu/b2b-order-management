@@ -1298,7 +1298,7 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List quotes (filter by status or customer)
+         * List quotes (filter by status or customer). Sent quotes past validUntil are reported as expired
          * @description Requires permission: `quotes:read`
          */
         get: {
@@ -1850,7 +1850,7 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Record customer rejection
+         * Record customer rejection (not allowed once the quote is past validUntil)
          * @description Requires permission: `quotes:write`
          */
         post: {

@@ -1,4 +1,6 @@
+import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { quotes } from '../src/db/schema';
 import { createUser, registerOrg, setupTestApp, type Session } from './helpers';
 
 let ctx: Awaited<ReturnType<typeof setupTestApp>>;
@@ -191,5 +193,34 @@ describe('orders', () => {
 
   it('returns 404 for unknown orders', async () => {
     await sales.as('get', '/orders/00000000-0000-4000-8000-000000000000').expect(404);
+  });
+});
+
+describe('quote expiry without user action', () => {
+  it('reports a sent quote past validUntil as expired in lists, filters and details', async () => {
+    const quote = await sentQuote(isoDate(10));
+    await sales.as('post', `/quotes/${quote.id}/send`).expect(200);
+    // Time passes: the stored row still says 'sent', but the validity date is now in the past.
+    await ctx.db.update(quotes).set({ validUntil: isoDate(-1) }).where(eq(quotes.id, quote.id));
+
+    expect((await sales.as('get', `/quotes/${quote.id}`).expect(200)).body.status).toBe('expired');
+    const sent = (await sales.as('get', '/quotes?status=sent&pageSize=100').expect(200)).body;
+    expect(sent.data.map((q: { id: string }) => q.id)).not.toContain(quote.id);
+    const expired = (await sales.as('get', '/quotes?status=expired&pageSize=100').expect(200)).body;
+    const listed = expired.data.find((q: { id: string }) => q.id === quote.id);
+    expect(listed?.status).toBe('expired');
+    expect(expired.meta.total).toBe(expired.data.length);
+
+    const reject = await sales.as('post', `/quotes/${quote.id}/reject`).expect(409);
+    expect(reject.body.error.code).toBe('INVALID_STATE');
+  });
+
+  it('keeps a quote valid through the last day of validUntil', async () => {
+    const quote = await sentQuote(isoDate(10));
+    await sales.as('post', `/quotes/${quote.id}/send`).expect(200);
+    await ctx.db.update(quotes).set({ validUntil: isoDate(0) }).where(eq(quotes.id, quote.id));
+    expect((await sales.as('get', `/quotes/${quote.id}`).expect(200)).body.status).toBe('sent');
+    const sent = (await sales.as('get', '/quotes?status=sent&pageSize=100').expect(200)).body;
+    expect(sent.data.map((q: { id: string }) => q.id)).toContain(quote.id);
   });
 });

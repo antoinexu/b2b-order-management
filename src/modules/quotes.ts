@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gte, isNull, lt, or, type SQL } from 'drizzle-orm';
 import { Router } from 'express';
 import type { DB } from '../db/client';
 import { customers, orders, quoteItems, quotes, QUOTE_STATUSES, type QuoteStatus } from '../db/schema';
@@ -64,18 +64,33 @@ const QuoteSummary = z
 const Quote = QuoteSummary.extend({ items: z.array(LineItem) }).openapi('Quote');
 
 const T = 'Quotes';
-doc({ method: 'get', path: '/quotes', tag: T, summary: 'List quotes (filter by status or customer)', permission: 'quotes:read', query: QuoteListQuery, response: paginated(QuoteSummary) });
+doc({ method: 'get', path: '/quotes', tag: T, summary: 'List quotes (filter by status or customer). Sent quotes past validUntil are reported as expired', permission: 'quotes:read', query: QuoteListQuery, response: paginated(QuoteSummary) });
 doc({ method: 'post', path: '/quotes', tag: T, summary: 'Create a draft quote', permission: 'quotes:write', body: CreateQuoteBody, response: Quote, status: 201 });
 doc({ method: 'get', path: '/quotes/{id}', tag: T, summary: 'Get a quote with line items', permission: 'quotes:read', params: IdParams, response: Quote });
 doc({ method: 'patch', path: '/quotes/{id}', tag: T, summary: 'Edit a draft quote', permission: 'quotes:write', params: IdParams, body: UpdateQuoteBody, response: Quote });
 doc({ method: 'delete', path: '/quotes/{id}', tag: T, summary: 'Delete a draft quote', permission: 'quotes:write', params: IdParams, status: 204 });
 doc({ method: 'post', path: '/quotes/{id}/send', tag: T, summary: 'Mark a draft quote as sent to the customer', permission: 'quotes:write', params: IdParams, response: Quote });
 doc({ method: 'post', path: '/quotes/{id}/accept', tag: T, summary: 'Record customer acceptance (fails and expires the quote if past validUntil)', permission: 'quotes:write', params: IdParams, response: Quote });
-doc({ method: 'post', path: '/quotes/{id}/reject', tag: T, summary: 'Record customer rejection', permission: 'quotes:write', params: IdParams, response: Quote });
+doc({ method: 'post', path: '/quotes/{id}/reject', tag: T, summary: 'Record customer rejection (not allowed once the quote is past validUntil)', permission: 'quotes:write', params: IdParams, response: Quote });
 doc({ method: 'post', path: '/quotes/{id}/convert', tag: T, summary: 'Convert an accepted quote into an order (once per quote)', permission: 'orders:write', params: IdParams, body: ConvertQuoteBody, response: Order, status: 201 });
 
 const stripQuote = ({ organizationId: _o, ...rest }: typeof quotes.$inferSelect) => rest;
+/** Calendar date in UTC; `validUntil` is compared against this. */
 const today = () => new Date().toISOString().slice(0, 10);
+const isPastValidity = (validUntil: string | null) => !!validUntil && validUntil < today();
+
+/**
+ * A sent quote past its validUntil date is expired, even if nobody has tried to accept it yet.
+ * Reads report the effective status, so lists, filters and dashboards never show stale "sent" quotes.
+ */
+const effectiveStatus = (quote: { status: QuoteStatus; validUntil: string | null }): QuoteStatus =>
+  quote.status === 'sent' && isPastValidity(quote.validUntil) ? 'expired' : quote.status;
+
+function statusFilter(status: QuoteStatus): SQL | undefined {
+  if (status === 'sent') return and(eq(quotes.status, 'sent'), or(isNull(quotes.validUntil), gte(quotes.validUntil, today())));
+  if (status === 'expired') return or(eq(quotes.status, 'expired'), and(eq(quotes.status, 'sent'), lt(quotes.validUntil, today())));
+  return eq(quotes.status, status);
+}
 
 async function loadQuote(db: DB | Tx, organizationId: string, id: string) {
   const row = await db.query.quotes.findFirst({
@@ -87,7 +102,7 @@ async function loadQuote(db: DB | Tx, organizationId: string, id: string) {
   });
   if (!row) throw notFound('Quote');
   const { organizationId: _o, customer, ...rest } = row;
-  return { ...rest, customerName: customer.companyName };
+  return { ...rest, status: effectiveStatus(rest), customerName: customer.companyName };
 }
 
 /** Locks the quote row for the rest of the transaction and returns it. */
@@ -113,7 +128,7 @@ export function quotesRouter(db: DB) {
     const { page, pageSize, status, customerId } = QuoteListQuery.parse(req.query);
     const where = and(
       eq(quotes.organizationId, organizationId),
-      status ? eq(quotes.status, status) : undefined,
+      status ? statusFilter(status) : undefined,
       customerId ? eq(quotes.customerId, customerId) : undefined,
     );
     const [rows, [total]] = await Promise.all([
@@ -127,7 +142,7 @@ export function quotesRouter(db: DB) {
         .offset((page - 1) * pageSize),
       db.select({ n: count() }).from(quotes).where(where),
     ]);
-    const data = rows.map(({ quote, customerName }) => ({ ...stripQuote(quote), customerName }));
+    const data = rows.map(({ quote, customerName }) => ({ ...stripQuote(quote), status: effectiveStatus(quote), customerName }));
     res.json({ data, meta: { page, pageSize, total: total?.n ?? 0 } });
   });
 
@@ -215,7 +230,7 @@ export function quotesRouter(db: DB) {
     const quote = await db.transaction(async (tx) => {
       const current = await lockQuote(tx, organizationId, id);
       requireStatus(current.status, 'draft', 'send');
-      if (current.validUntil && current.validUntil < today()) {
+      if (isPastValidity(current.validUntil)) {
         throw invalidState('validUntil is in the past; update it before sending');
       }
       await tx.update(quotes).set({ status: 'sent' }).where(eq(quotes.id, id));
@@ -230,7 +245,7 @@ export function quotesRouter(db: DB) {
     const outcome = await db.transaction(async (tx) => {
       const current = await lockQuote(tx, organizationId, id);
       requireStatus(current.status, 'sent', 'accept');
-      const expired = !!current.validUntil && current.validUntil < today();
+      const expired = isPastValidity(current.validUntil);
       await tx.update(quotes).set({ status: expired ? 'expired' : 'accepted' }).where(eq(quotes.id, id));
       return expired;
     });
@@ -244,7 +259,7 @@ export function quotesRouter(db: DB) {
     const { id } = IdParams.parse(req.params);
     const quote = await db.transaction(async (tx) => {
       const current = await lockQuote(tx, organizationId, id);
-      requireStatus(current.status, 'sent', 'reject');
+      requireStatus(effectiveStatus(current), 'sent', 'reject');
       await tx.update(quotes).set({ status: 'rejected' }).where(eq(quotes.id, id));
       return loadQuote(tx, organizationId, id);
     });
