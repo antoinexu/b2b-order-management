@@ -1,13 +1,13 @@
 import { and, asc, count, desc, eq } from 'drizzle-orm';
 import { Router } from 'express';
 import type { DB } from '../db/client';
-import { orders, quoteItems, quotes, QUOTE_STATUSES, type QuoteStatus } from '../db/schema';
+import { customers, orders, quoteItems, quotes, QUOTE_STATUSES, type QuoteStatus } from '../db/schema';
 import { invalidState, notFound } from '../lib/errors';
 import { doc } from '../lib/openapi';
 import { IdParams, paginated, PaginationQuery, z } from '../lib/zod';
 import { auth, requirePermission } from '../middleware/auth';
 import { assertCustomer, Currency, LineItem, LineItemInput, nextDocumentNumber, resolveLines, TaxRateBps, type Tx } from './line-items';
-import { insertOrder, loadOrder } from './orders';
+import { insertOrder, loadOrder, Order } from './orders';
 
 const Status = z.enum(QUOTE_STATUSES);
 const IsoDate = z.iso.date().openapi({ example: '2026-12-31' });
@@ -46,6 +46,7 @@ const QuoteSummary = z
     id: z.uuid(),
     number: z.string(),
     customerId: z.uuid(),
+    customerName: z.string(),
     status: Status,
     validUntil: z.string().nullable(),
     currency: z.string(),
@@ -71,7 +72,7 @@ doc({ method: 'delete', path: '/quotes/{id}', tag: T, summary: 'Delete a draft q
 doc({ method: 'post', path: '/quotes/{id}/send', tag: T, summary: 'Mark a draft quote as sent to the customer', permission: 'quotes:write', params: IdParams, response: Quote });
 doc({ method: 'post', path: '/quotes/{id}/accept', tag: T, summary: 'Record customer acceptance (fails and expires the quote if past validUntil)', permission: 'quotes:write', params: IdParams, response: Quote });
 doc({ method: 'post', path: '/quotes/{id}/reject', tag: T, summary: 'Record customer rejection', permission: 'quotes:write', params: IdParams, response: Quote });
-doc({ method: 'post', path: '/quotes/{id}/convert', tag: T, summary: 'Convert an accepted quote into an order (once per quote)', permission: 'orders:write', params: IdParams, body: ConvertQuoteBody, status: 201 });
+doc({ method: 'post', path: '/quotes/{id}/convert', tag: T, summary: 'Convert an accepted quote into an order (once per quote)', permission: 'orders:write', params: IdParams, body: ConvertQuoteBody, response: Order, status: 201 });
 
 const stripQuote = ({ organizationId: _o, ...rest }: typeof quotes.$inferSelect) => rest;
 const today = () => new Date().toISOString().slice(0, 10);
@@ -79,11 +80,14 @@ const today = () => new Date().toISOString().slice(0, 10);
 async function loadQuote(db: DB | Tx, organizationId: string, id: string) {
   const row = await db.query.quotes.findFirst({
     where: and(eq(quotes.id, id), eq(quotes.organizationId, organizationId)),
-    with: { items: { orderBy: asc(quoteItems.position), columns: { quoteId: false } } },
+    with: {
+      items: { orderBy: asc(quoteItems.position), columns: { quoteId: false } },
+      customer: { columns: { companyName: true } },
+    },
   });
   if (!row) throw notFound('Quote');
-  const { organizationId: _o, ...rest } = row;
-  return rest;
+  const { organizationId: _o, customer, ...rest } = row;
+  return { ...rest, customerName: customer.companyName };
 }
 
 /** Locks the quote row for the rest of the transaction and returns it. */
@@ -113,10 +117,18 @@ export function quotesRouter(db: DB) {
       customerId ? eq(quotes.customerId, customerId) : undefined,
     );
     const [rows, [total]] = await Promise.all([
-      db.select().from(quotes).where(where).orderBy(desc(quotes.createdAt)).limit(pageSize).offset((page - 1) * pageSize),
+      db
+        .select({ quote: quotes, customerName: customers.companyName })
+        .from(quotes)
+        .innerJoin(customers, eq(customers.id, quotes.customerId))
+        .where(where)
+        .orderBy(desc(quotes.createdAt), desc(quotes.number))
+        .limit(pageSize)
+        .offset((page - 1) * pageSize),
       db.select({ n: count() }).from(quotes).where(where),
     ]);
-    res.json({ data: rows.map(stripQuote), meta: { page, pageSize, total: total?.n ?? 0 } });
+    const data = rows.map(({ quote, customerName }) => ({ ...stripQuote(quote), customerName }));
+    res.json({ data, meta: { page, pageSize, total: total?.n ?? 0 } });
   });
 
   router.post('/', requirePermission('quotes:write'), async (req, res) => {

@@ -1,12 +1,31 @@
-# B2B Order Management API
+# B2B Order Management
 
 [![CI](https://github.com/antoinexu/b2b-order-management/actions/workflows/ci.yml/badge.svg)](https://github.com/antoinexu/b2b-order-management/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-A multi-tenant B2B order management backend: customer management, product catalog, quotes with a full
+A full-stack, multi-tenant B2B order management app: customer management, product catalog, quotes with a full
 approval lifecycle, quote-to-order conversion, order fulfilment tracking and role-based access control.
 
-**Stack:** TypeScript · Node.js · Express 5 · PostgreSQL · Drizzle ORM · Zod · JWT · OpenAPI 3 (Swagger UI) · Vitest · Docker
+**API:** TypeScript · Node.js · Express 5 · PostgreSQL · Drizzle ORM · Zod · JWT · OpenAPI 3 · Vitest · Docker<br>
+**Web:** React 19 · Vite · TanStack Query · React Router · Tailwind CSS · shadcn/ui · Playwright
+
+![Dashboard](docs/screenshots/dashboard.png)
+
+| Quote editor with live pricing | Order detail with status history |
+| --- | --- |
+| ![Quote editor](docs/screenshots/quote-editor.png) | ![Order detail](docs/screenshots/order-detail.png) |
+
+## Try it in 30 seconds
+
+No database or Docker needed. The API can run on an in-memory Postgres preloaded with demo data:
+
+```bash
+npm install && npm --prefix web install
+npm run dev:memory          # API on :3000 with demo data (in-memory, reset on restart)
+npm --prefix web run dev    # web app on http://localhost:5173
+```
+
+Sign in with one click as **Admin**, **Manager**, **Sales** or **Viewer** to see how the UI adapts to each role.
 
 ## Features
 
@@ -23,6 +42,20 @@ approval lifecycle, quote-to-order conversion, order fulfilment tracking and rol
 - **API contract:** OpenAPI 3 generated from the same Zod schemas that validate requests, so the docs can't drift from the code.
 - **Tests:** unit and integration tests cover business flows, security boundaries and database upgrades using PGlite (an in-process Postgres engine).
   You don't need Docker to run them.
+
+### Web app
+
+- **End-to-end type safety:** request and response types are generated from the API's OpenAPI document
+  (`openapi-typescript` + `openapi-fetch`). CI fails if the generated types drift from the contract, so a backend change that breaks the frontend fails CI instead of production.
+- **Role-aware UI:** navigation, buttons and routes adapt to the signed-in user's permissions from `/auth/me`.
+  The API still enforces every permission; the UI only hides what the user can't do.
+- **Quote editor:** catalog or custom lines, discounts and tax with a live total preview. The preview uses the same
+  integer math as the server, so the totals on screen match what is saved.
+- **Order fulfilment:** only valid next statuses are offered, with notes (e.g. tracking numbers) and a status timeline.
+- **Production details:** loading skeletons, empty and error states, URL-synced filters, route-level code splitting,
+  responsive layout, accessible labels, and automatic sign-out when a token expires or is revoked.
+- **Playwright end-to-end tests:** a sales rep quotes, sends, accepts and converts; a manager confirms and ships;
+  viewers are read-only; a new tenant starts empty and isolated. Tests run against the real API and database engine.
 
 ## Quick start
 
@@ -80,6 +113,17 @@ The free instance sleeps when idle, so the first request after a while can take 
 | `npm run db:generate` | Generate a SQL migration after editing `src/db/schema.ts` |
 | `npm run db:seed` | Insert demo data |
 | `npm run openapi:export` | Write the API contract to `docs/openapi.json` |
+| `npm run dev:memory` | Run the API on an in-memory database with demo data |
+
+Frontend (`web/`):
+
+| Script | Description |
+| --- | --- |
+| `npm run dev` | Start the web app on :5173 (proxies `/api` to :3000) |
+| `npm run gen:api` | Regenerate typed API client types from `../docs/openapi.json` |
+| `npm test` | Unit tests |
+| `npm run e2e` | Playwright end-to-end tests (starts the API and web app automatically) |
+| `npm run lint` / `npm run build` | Lint with oxlint / production build |
 
 ## Roles & permissions
 
@@ -158,6 +202,7 @@ src/
   modules/             auth, users, customers, products, quotes, orders, shared line-item logic
 drizzle/               SQL migrations (generated, committed)
 tests/                 Vitest + Supertest suites on PGlite (in-process Postgres)
+web/                   React frontend (see web/README.md)
 ```
 
 ## Design decisions
@@ -181,7 +226,7 @@ tests/                 Vitest + Supertest suites on PGlite (in-process Postgres)
 - [ ] Audit log of all write operations
 - [ ] PDF export for quotes and orders
 - [ ] Refresh tokens and password reset
-- [ ] Frontend dashboard
+- [x] Frontend (React web app)
 
 ## License
 

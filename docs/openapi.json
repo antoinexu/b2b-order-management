@@ -351,6 +351,9 @@
             "type": "string",
             "format": "uuid"
           },
+          "customerName": {
+            "type": "string"
+          },
           "quoteId": {
             "type": "string",
             "nullable": true,
@@ -406,6 +409,7 @@
           "id",
           "number",
           "customerId",
+          "customerName",
           "quoteId",
           "status",
           "poNumber",
@@ -759,6 +763,9 @@
             "type": "string",
             "format": "uuid"
           },
+          "customerName": {
+            "type": "string"
+          },
           "status": {
             "type": "string",
             "enum": [
@@ -809,6 +816,7 @@
           "id",
           "number",
           "customerId",
+          "customerName",
           "status",
           "validUntil",
           "currency",
@@ -3284,7 +3292,14 @@
         },
         "responses": {
           "201": {
-            "description": "Success"
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Order"
+                }
+              }
+            }
           },
           "400": {
             "description": "Validation error",

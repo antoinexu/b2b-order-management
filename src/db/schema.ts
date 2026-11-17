@@ -140,13 +140,17 @@ export const orderStatusHistory = pgTable('order_status_history', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
-export const quotesRelations = relations(quotes, ({ many }) => ({ items: many(quoteItems) }));
+export const quotesRelations = relations(quotes, ({ many, one }) => ({
+  items: many(quoteItems),
+  customer: one(customers, { fields: [quotes.customerId], references: [customers.id] }),
+}));
 export const quoteItemsRelations = relations(quoteItems, ({ one }) => ({
   quote: one(quotes, { fields: [quoteItems.quoteId], references: [quotes.id] }),
 }));
-export const ordersRelations = relations(orders, ({ many }) => ({
+export const ordersRelations = relations(orders, ({ many, one }) => ({
   items: many(orderItems),
   history: many(orderStatusHistory),
+  customer: one(customers, { fields: [orders.customerId], references: [customers.id] }),
 }));
 export const orderItemsRelations = relations(orderItems, ({ one }) => ({
   order: one(orders, { fields: [orderItems.orderId], references: [orders.id] }),

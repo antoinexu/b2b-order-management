@@ -1,7 +1,7 @@
 import { and, asc, count, desc, eq } from 'drizzle-orm';
 import { Router } from 'express';
 import type { DB } from '../db/client';
-import { orderItems, orders, orderStatusHistory, ORDER_STATUSES, type OrderStatus } from '../db/schema';
+import { customers, orderItems, orders, orderStatusHistory, ORDER_STATUSES, type OrderStatus } from '../db/schema';
 import { invalidState, notFound } from '../lib/errors';
 import { doc } from '../lib/openapi';
 import { IdParams, paginated, PaginationQuery, z } from '../lib/zod';
@@ -45,6 +45,7 @@ const OrderSummary = z
     id: z.uuid(),
     number: z.string(),
     customerId: z.uuid(),
+    customerName: z.string(),
     quoteId: z.uuid().nullable(),
     status: Status,
     poNumber: z.string().nullable(),
@@ -68,7 +69,7 @@ const StatusChange = z.object({
   createdAt: z.date(),
 });
 
-const Order = OrderSummary.extend({ items: z.array(LineItem), history: z.array(StatusChange) }).openapi('Order');
+export const Order = OrderSummary.extend({ items: z.array(LineItem), history: z.array(StatusChange) }).openapi('Order');
 
 const T = 'Orders';
 doc({ method: 'get', path: '/orders', tag: T, summary: 'List orders (filter by status or customer)', permission: 'orders:read', query: OrderListQuery, response: paginated(OrderSummary) });
@@ -84,11 +85,12 @@ export async function loadOrder(db: DB | Tx, organizationId: string, id: string)
     with: {
       items: { orderBy: asc(orderItems.position), columns: { orderId: false } },
       history: { orderBy: asc(orderStatusHistory.createdAt), columns: { id: false, orderId: false } },
+      customer: { columns: { companyName: true } },
     },
   });
   if (!row) throw notFound('Order');
-  const { organizationId: _o, ...rest } = row;
-  return rest;
+  const { organizationId: _o, customer, ...rest } = row;
+  return { ...rest, customerName: customer.companyName };
 }
 
 interface NewOrder {
@@ -137,10 +139,18 @@ export function ordersRouter(db: DB) {
       customerId ? eq(orders.customerId, customerId) : undefined,
     );
     const [rows, [total]] = await Promise.all([
-      db.select().from(orders).where(where).orderBy(desc(orders.createdAt)).limit(pageSize).offset((page - 1) * pageSize),
+      db
+        .select({ order: orders, customerName: customers.companyName })
+        .from(orders)
+        .innerJoin(customers, eq(customers.id, orders.customerId))
+        .where(where)
+        .orderBy(desc(orders.createdAt), desc(orders.number))
+        .limit(pageSize)
+        .offset((page - 1) * pageSize),
       db.select({ n: count() }).from(orders).where(where),
     ]);
-    res.json({ data: rows.map(stripOrder), meta: { page, pageSize, total: total?.n ?? 0 } });
+    const data = rows.map(({ order, customerName }) => ({ ...stripOrder(order), customerName }));
+    res.json({ data, meta: { page, pageSize, total: total?.n ?? 0 } });
   });
 
   router.post('/', requirePermission('orders:write'), async (req, res) => {
