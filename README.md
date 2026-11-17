@@ -1,5 +1,8 @@
 # B2B Order Management API
 
+[![CI](https://github.com/antoinexu/b2b-order-management/actions/workflows/ci.yml/badge.svg)](https://github.com/antoinexu/b2b-order-management/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 A multi-tenant B2B order management backend: customer management, product catalog, quotes with a full
 approval lifecycle, quote-to-order conversion, order fulfilment tracking and role-based access control.
 
@@ -146,3 +149,7 @@ tests/                 Vitest + Supertest suites on PGlite (in-process Postgres)
 - [ ] PDF export for quotes and orders
 - [ ] Refresh tokens and password reset
 - [ ] Frontend dashboard
+
+## License
+
+[MIT](LICENSE)
