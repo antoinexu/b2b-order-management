@@ -1,0 +1,24 @@
+# Render Blueprint: https://render.com/docs/blueprint-spec
+# The database is external (Neon free tier); paste its connection string as DATABASE_URL when prompted.
+services:
+  - type: web
+    name: b2b-order-management
+    runtime: docker
+    plan: free
+    region: oregon
+    healthCheckPath: /health
+    # Deploy only after GitHub CI checks pass on main.
+    autoDeployTrigger: checksPass
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 8h
+      - key: TRUST_PROXY
+        value: "1"
+      - key: LOG_LEVEL
+        value: info
+      - key: CORS_ORIGIN
+        value: "*"

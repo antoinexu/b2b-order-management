@@ -19,9 +19,11 @@ COPY --from=build /app/dist ./dist
 COPY drizzle ./drizzle
 
 USER node
+ENV PORT=3000
 EXPOSE 3000
+# Uses $PORT so the check still works when a platform (e.g. Render) assigns a different port.
 HEALTHCHECK --interval=15s --timeout=3s --start-period=10s --retries=3 \
-  CMD wget -qO- http://127.0.0.1:3000/health || exit 1
+  CMD wget -qO- "http://127.0.0.1:${PORT}/health" || exit 1
 
 # Migrations run automatically on startup.
 CMD ["node", "dist/server.js"]

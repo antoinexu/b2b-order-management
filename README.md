@@ -58,6 +58,17 @@ The application requires Node.js 22 or later.
 Demo users created by the seed script (password `Password123!`):
 `admin@acme.example`, `manager@acme.example`, `sales@acme.example`, `viewer@acme.example`.
 
+## Deployment
+
+The live demo runs on [Render](https://render.com) (Docker web service) with a [Neon](https://neon.tech) serverless Postgres database, both on free tiers.
+
+1. Create a Neon project and copy its connection string.
+2. In Render, choose **New → Blueprint** and select this repository. [`render.yaml`](render.yaml) defines the service.
+3. Paste the Neon connection string as `DATABASE_URL`. Render generates `JWT_SECRET` automatically.
+
+Migrations run on startup. Render redeploys after CI passes on `main`.
+The free instance sleeps when idle, so the first request after a while can take about a minute.
+
 ## Scripts
 
 | Script | Description |

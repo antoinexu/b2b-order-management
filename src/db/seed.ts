@@ -2,6 +2,7 @@
  * Seeds a demo organization with one user per role, customers and products.
  * Usage: npm run db:seed   (all demo users share the password "Password123!")
  */
+import { eq } from 'drizzle-orm';
 import { config } from '../config';
 import { hashPassword } from '../lib/password';
 import { createPgDatabase } from './client';
@@ -11,6 +12,14 @@ async function seed() {
   const database = createPgDatabase(config.DATABASE_URL);
   await database.migrate();
   const { db } = database;
+
+  // Idempotent: safe to run again against a database that was already seeded.
+  const [existing] = await db.select({ id: users.id }).from(users).where(eq(users.email, 'admin@acme.example'));
+  if (existing) {
+    console.log('Demo data already present, nothing to do.');
+    await database.close();
+    return;
+  }
 
   const passwordHash = await hashPassword('Password123!');
   await db.transaction(async (tx) => {
