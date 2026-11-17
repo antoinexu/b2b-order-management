@@ -1,5 +1,7 @@
+import jwt from 'jsonwebtoken';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { config } from '../src/config';
 import { createUser, registerOrg, setupTestApp, uniqueEmail } from './helpers';
 
 let ctx: Awaited<ReturnType<typeof setupTestApp>>;
@@ -52,6 +54,16 @@ describe('auth', () => {
     const res = await admin.as('get', '/auth/me').expect(200);
     expect(res.body.organization.name).toBe('Me Corp');
     expect(res.body.permissions).toContain('users:write');
+  });
+
+  it('only accepts HS256 tokens, even when signed with the right secret', async () => {
+    const admin = await registerOrg(ctx.app);
+    const claims = { sub: admin.userId, org: admin.organizationId };
+    await admin.as('get', '/customers').expect(200);
+    const hs512 = jwt.sign(claims, config.JWT_SECRET, { algorithm: 'HS512', expiresIn: '1h' });
+    await request(ctx.app).get('/api/v1/customers').set('Authorization', `Bearer ${hs512}`).expect(401);
+    const unsigned = jwt.sign(claims, null, { algorithm: 'none' });
+    await request(ctx.app).get('/api/v1/customers').set('Authorization', `Bearer ${unsigned}`).expect(401);
   });
 
   it('rejects missing, malformed and tampered tokens', async () => {

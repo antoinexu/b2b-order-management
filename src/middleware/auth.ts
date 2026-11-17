@@ -28,7 +28,7 @@ interface TokenPayload {
 
 export function signToken(user: { id: string; organizationId: string }, secret: string, expiresIn: string): string {
   const payload: TokenPayload = { sub: user.id, org: user.organizationId };
-  return jwt.sign(payload, secret, { expiresIn: expiresIn as jwt.SignOptions['expiresIn'] });
+  return jwt.sign(payload, secret, { algorithm: 'HS256', expiresIn: expiresIn as jwt.SignOptions['expiresIn'] });
 }
 
 /**
@@ -42,7 +42,8 @@ export function authenticate(db: DB, secret: string): RequestHandler {
 
     let payload: TokenPayload;
     try {
-      payload = jwt.verify(header.slice(7), secret) as TokenPayload;
+      // Pin the algorithm so a token can never choose how it is verified.
+      payload = jwt.verify(header.slice(7), secret, { algorithms: ['HS256'] }) as TokenPayload;
     } catch {
       throw unauthorized('Invalid or expired token');
     }

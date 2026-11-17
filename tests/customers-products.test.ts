@@ -57,7 +57,7 @@ describe('customers', () => {
       .send({ customerId: customer.id, items: [{ description: 'Service', quantity: 1, unitPriceCents: 1000 }] })
       .expect(201);
     const res = await admin.as('delete', `/customers/${customer.id}`).expect(409);
-    expect(res.body.error.code).toBe('CONFLICT');
+    expect(res.body.error).toMatchObject({ code: 'CONFLICT', message: 'This customer has quotes or orders and cannot be deleted' });
   });
 });
 

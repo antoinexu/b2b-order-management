@@ -2,7 +2,7 @@ import { and, count, desc, eq, ilike, or } from 'drizzle-orm';
 import { Router } from 'express';
 import type { DB } from '../db/client';
 import { customers } from '../db/schema';
-import { notFound } from '../lib/errors';
+import { conflict, notFound, pgErrorCode, PG_FK_VIOLATION, PG_RESTRICT_VIOLATION } from '../lib/errors';
 import { doc } from '../lib/openapi';
 import { IdParams, paginated, PaginationQuery, z } from '../lib/zod';
 import { auth, requirePermission } from '../middleware/auth';
@@ -98,7 +98,14 @@ export function customersRouter(db: DB) {
   router.delete('/:id', requirePermission('customers:delete'), async (req, res) => {
     const { organizationId } = auth(req);
     const { id } = IdParams.parse(req.params);
-    const deleted = await db.delete(customers).where(byId(organizationId, id)).returning({ id: customers.id });
+    const deleted = await db.delete(customers).where(byId(organizationId, id)).returning({ id: customers.id })
+      .catch((err: unknown) => {
+        const code = pgErrorCode(err);
+        if (code === PG_RESTRICT_VIOLATION || code === PG_FK_VIOLATION) {
+          throw conflict('This customer has quotes or orders and cannot be deleted');
+        }
+        throw err;
+      });
     if (deleted.length === 0) throw notFound('Customer');
     res.status(204).end();
   });
