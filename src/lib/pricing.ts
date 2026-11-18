@@ -43,6 +43,30 @@ export function computeTotals(lineTotals: number[], taxRateBps: number): Totals 
   };
 }
 
+const formatPercent = (bps: number) => `${Number((bps / 100).toFixed(2))}%`;
+
+/**
+ * Checks one line against a discount limit. The effective discount compares the net unit price
+ * (after the line discount) with the catalog price, so a manual price cut counts the same as a discount.
+ * Lines without a catalog product have nothing to compare against, so they may not be discounted at all.
+ * Returns a human-readable violation, or null when the line is within the limit.
+ */
+export function discountViolation(
+  line: Pick<LineInput, 'unitPriceCents' | 'discountBps'>,
+  catalogPriceCents: number | undefined,
+  maxDiscountBps: number,
+): string | null {
+  if (catalogPriceCents === undefined) {
+    return line.discountBps > 0 ? 'custom lines cannot be discounted' : null;
+  }
+  const net = BigInt(line.unitPriceCents) * (BPS - BigInt(line.discountBps));
+  const floor = BigInt(catalogPriceCents) * (BPS - BigInt(maxDiscountBps));
+  if (net >= floor) return null;
+  // Integer division rounds the remaining price down, so the reported discount never reads as equal to the limit.
+  const effectiveBps = Number(BPS - net / BigInt(catalogPriceCents));
+  return `effective discount of ${formatPercent(effectiveBps)} off the catalog price exceeds the ${formatPercent(maxDiscountBps)} limit`;
+}
+
 export function formatDocumentNumber(prefix: string, seq: number): string {
   return `${prefix}-${String(seq).padStart(6, '0')}`;
 }

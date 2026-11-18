@@ -26,7 +26,13 @@ export const TimeZone = z
   .transform(canonicalTimeZone)
   .openapi({ example: 'America/New_York', description: 'IANA time zone; quote validity dates end at midnight in this zone' });
 
-export const Organization = z.object({ id: z.uuid(), name: z.string(), timezone: z.string() }).openapi('Organization');
+export const MaxDiscountBps = z.number().int().min(0).max(10_000).openapi({
+  description: 'Largest effective discount off the catalog price, in bps, for users without pricing:override. They cannot discount custom lines at all.',
+});
+
+export const Organization = z
+  .object({ id: z.uuid(), name: z.string(), timezone: z.string(), maxDiscountBps: z.number().int(), currency: z.string() })
+  .openapi('Organization');
 
 export const PublicUser = z
   .object({
@@ -131,7 +137,13 @@ export function authRouter(db: DB, config: Config, authenticate: RequestHandler)
     const { userId, organizationId, role } = auth(req);
     const [user] = await db.select().from(users).where(eq(users.id, userId));
     const [org] = await db
-      .select({ id: organizations.id, name: organizations.name, timezone: organizations.timezone })
+      .select({
+        id: organizations.id,
+        name: organizations.name,
+        timezone: organizations.timezone,
+        maxDiscountBps: organizations.maxDiscountBps,
+        currency: organizations.currency,
+      })
       .from(organizations)
       .where(eq(organizations.id, organizationId));
     if (!user || !org) throw notFound('User');

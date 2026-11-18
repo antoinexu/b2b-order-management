@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { formatBps, formatDate, formatMoney, parseMoneyToCents, parsePercentToBps, todayIn } from './format';
-import { computeTotals, lineTotalCents, MAX_MONEY_CENTS, MAX_QUANTITY } from './pricing';
+import { formatBps, formatDate, formatMoney, parseMoneyToCents, parsePercentToBps, SUPPORTED_CURRENCIES, todayIn } from './format';
+import { computeTotals, discountViolation, lineTotalCents, MAX_MONEY_CENTS, MAX_QUANTITY } from './pricing';
 
 describe('money parsing and formatting', () => {
   it.each([
@@ -86,5 +86,29 @@ describe('todayIn', () => {
     expect(todayIn('UTC', instant)).toBe('2026-03-01');
     expect(todayIn('America/Los_Angeles', instant)).toBe('2026-02-28');
     expect(todayIn('Asia/Shanghai', instant)).toBe('2026-03-01');
+  });
+});
+
+describe('discountViolation (client preview of the API limit)', () => {
+  it('matches the API rule and wording', () => {
+    expect(discountViolation(1000, 2000, 1000, 2000)).toBeNull();
+    expect(discountViolation(900, 1000, 1000, 2000)).toBeNull();
+    expect(discountViolation(1000, 2500, 1000, 2000)).toBe('25% off the catalog price exceeds your 20% limit.');
+    expect(discountViolation(299_999, 0, 375_000, 2000)).toBe('20.01% off the catalog price exceeds your 20% limit.');
+    expect(discountViolation(5000, 0, undefined, 2000)).toBeNull();
+    expect(discountViolation(5000, 100, undefined, 2000)).toBe("Custom lines can't be discounted.");
+  });
+});
+
+describe('currency support', () => {
+  it('shows stored hundredths with two decimals in any currency', () => {
+    expect(formatMoney(1250, 'JPY')).toBe('¥12.50');
+    expect(formatMoney(1, 'JPY')).toBe('¥0.01');
+    expect(formatMoney(1250, 'EUR')).toBe('€12.50');
+  });
+
+  it('offers only two-decimal currencies', () => {
+    expect(SUPPORTED_CURRENCIES).toEqual(expect.arrayContaining(['USD', 'EUR', 'GBP', 'CNY']));
+    for (const code of ['JPY', 'KRW', 'KWD']) expect(SUPPORTED_CURRENCIES).not.toContain(code);
   });
 });

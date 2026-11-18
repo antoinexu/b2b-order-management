@@ -22,7 +22,7 @@ export type OrderStatus = Order['status'];
 export type Permission =
   | 'users:read' | 'users:write' | 'organization:write'
   | 'customers:read' | 'customers:write' | 'customers:delete'
-  | 'products:read' | 'products:write'
+  | 'products:read' | 'products:write' | 'pricing:override'
   | 'quotes:read' | 'quotes:write'
   | 'orders:read' | 'orders:write' | 'orders:status';
 

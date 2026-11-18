@@ -200,3 +200,119 @@ test('saving the organization time zone adopts the canonical spelling', async ({
   await expect(zone).toHaveValue('America/New_York');
   await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
 });
+
+test("sales can edit a draft priced beyond their limit as long as those lines stay unchanged", async ({ page, request }) => {
+  const admin = await register(request, 'Limit');
+  const buyer = await create(request, admin, 'customers', { companyName: 'Limit Buyer' });
+  const product = await create(request, admin, 'products', { sku: 'DEAL', name: 'Deal item', unitPriceCents: 10_000 });
+  const salesEmail = `sales.${Date.now()}@regression.example`;
+  await create(request, admin, 'users', { email: salesEmail, name: 'Sam Sales', password: 'Password123!', role: 'sales' });
+  const sales = await (await request.post('/api/v1/auth/login', { data: { email: salesEmail, password: 'Password123!' } })).json();
+  const quote = await create(request, admin, 'quotes', { customerId: buyer.id,
+    items: [{ productId: product.id, quantity: 1, discountBps: 5000 }] });
+
+  await openAs(page, sales, `/quotes/${quote.id}/edit`);
+  await expect(page.getByText(/You can give up to 20% off catalog prices/)).toBeVisible();
+  await page.getByLabel('Notes').fill('Sales follow-up');
+  const response = page.waitForResponse(response => response.request().method() === 'PATCH' && response.url().endsWith(`/quotes/${quote.id}`));
+  await page.getByRole('button', { name: 'Save changes' }).click();
+  expect((await response).status()).toBe(200);
+  await expect(page.getByText('Sales follow-up')).toBeVisible();
+
+  // Changing the discounted line is a new price decision, which the API rejects with a clear message.
+  await page.goto(`/quotes/${quote.id}/edit`);
+  await page.getByLabel('Line 1 discount percent').fill('49');
+  await page.getByRole('button', { name: 'Save changes' }).click();
+  await expect(page.getByRole('alert')).toContainText('Line 1: effective discount of 49% off the catalog price exceeds the 20% limit');
+});
+
+for (const resource of ['quotes', 'orders'] as const) {
+  test(`sales can submit ${resource} after the catalog price drops while editing`, async ({ page, request }) => {
+    const admin = await register(request, `Catalog${resource}`);
+    await create(request, admin, 'customers', { companyName: 'Catalog Buyer' });
+    const product = await create(request, admin, 'products', { sku: 'CHANGING', name: 'Changing price', unitPriceCents: 10_000 });
+    const email = `sales.${resource}.${Date.now()}@regression.example`;
+    await create(request, admin, 'users', { email, name: 'Catalog Sales', password: 'Password123!', role: 'sales' });
+    const login = await request.post('/api/v1/auth/login', { data: { email, password: 'Password123!' } });
+    expect(login.status()).toBe(200);
+    await openAs(page, await login.json(), `/${resource}/new`);
+    await page.getByRole('combobox', { name: 'Customer', exact: true }).click();
+    await page.getByRole('option', { name: 'Catalog Buyer', exact: true }).click();
+    await page.getByRole('combobox', { name: 'Line 1 product' }).click();
+    await page.getByRole('option', { name: /CHANGING/ }).click();
+    await expect(page.getByLabel('Line 1 unit price')).toHaveValue('100.00');
+    await page.getByLabel('Line 1 unit price').fill('70');
+
+    // Catalog previews must not prevent the server from checking the current price.
+    const submit = page.getByRole('button', { name: resource === 'quotes' ? 'Create draft' : 'Create order', exact: true });
+    await expect(submit).toBeEnabled();
+    const rejected = page.waitForResponse(response => response.request().method() === 'POST' && response.url().endsWith(`/${resource}`));
+    await submit.click();
+    expect((await rejected).status()).toBe(403);
+    await expect(page.getByRole('alert')).toContainText('Line 1: effective discount of 30%');
+
+    // The same $70 price is now only 12.5% off, without reselecting the product or losing the draft.
+    const changed = await request.patch(`/api/v1/products/${product.id}`, { headers: admin.headers, data: { unitPriceCents: 8000 } });
+    expect(changed.status()).toBe(200);
+    await expect(page.getByLabel('Line 1 unit price')).toHaveValue('70');
+    await expect(page.getByRole('status').filter({ hasText: '30% off the catalog price' })).toContainText('checked when you save');
+    const accepted = page.waitForResponse(response => response.request().method() === 'POST' && response.url().endsWith(`/${resource}`));
+    await submit.click();
+    const response = await accepted;
+    expect(response.status()).toBe(201);
+    const saved = await response.json();
+    expect(saved.items[0].unitPriceCents).toBe(7000);
+    expect(saved.totalCents).toBe(7000);
+    await expect(page).toHaveURL(new RegExp(`/${resource}/${saved.id}$`));
+  });
+}
+
+test('a manager-priced quote in another currency stays editable for sales without new lines', async ({ page, request }) => {
+  const admin = await register(request, 'Foreign');
+  const buyer = await create(request, admin, 'customers', { companyName: 'Foreign Buyer' });
+  const salesEmail = `sales.${Date.now()}@foreign.example`;
+  await create(request, admin, 'users', { email: salesEmail, name: 'Fran Sales', password: 'Password123!', role: 'sales' });
+  const sales = await (await request.post('/api/v1/auth/login', { data: { email: salesEmail, password: 'Password123!' } })).json();
+  const quote = await create(request, admin, 'quotes', { customerId: buyer.id, currency: 'EUR',
+    items: [{ description: 'Setup', quantity: 1, unitPriceCents: 5000 }] });
+
+  await openAs(page, sales, `/quotes/${quote.id}/edit`);
+  await expect(page.getByText(/priced in EUR, but the catalog is in USD/)).toBeVisible();
+  await page.getByLabel('Notes').fill('Kept in EUR');
+  const response = page.waitForResponse(response => response.request().method() === 'PATCH' && response.url().endsWith(`/quotes/${quote.id}`));
+  await page.getByRole('button', { name: 'Save changes' }).click();
+  expect((await response).status()).toBe(200);
+
+  await page.goto(`/quotes/${quote.id}/edit`);
+  await page.getByLabel('Line 1 unit price').fill('40');
+  await page.getByRole('button', { name: 'Save changes' }).click();
+  await expect(page.getByRole('alert')).toContainText('Only a manager or admin can price in EUR; the catalog is priced in USD.');
+});
+
+test('a new quote keeps its currency when the organization switches base currency mid-edit', async ({ page, request }) => {
+  const admin = await register(request, 'Switch');
+  const buyer = await create(request, admin, 'customers', { companyName: 'Switch Buyer' });
+  await page.clock.install();
+  await openAs(page, admin, '/quotes/new');
+  await page.getByRole('combobox', { name: 'Customer' }).click();
+  await page.getByRole('option', { name: buyer.companyName }).click();
+  await page.getByRole('combobox', { name: 'Line 1 product' }).click();
+  await page.getByRole('option', { name: 'Custom item' }).click();
+  await page.getByLabel('Line 1 description').fill('Consulting');
+  await page.getByLabel('Line 1 unit price').fill('100');
+  await expect(page.getByText('$100.00').first()).toBeVisible();
+
+  const switched = await request.patch('/api/v1/organization', { headers: admin.headers, data: { currency: 'EUR' } });
+  expect(switched.status()).toBe(200);
+  // Let the cached account go stale, then signal the tab became visible again (TanStack Query listens on window).
+  await page.clock.fastForward(61_000);
+  await page.evaluate(() => window.dispatchEvent(new Event('visibilitychange')));
+  await expect(page.getByText(/base currency changed to EUR while you were editing/)).toBeVisible();
+  await expect(page.getByText('$100.00').first()).toBeVisible();
+  await expect(page.getByText('€100.00')).toHaveCount(0);
+
+  const response = page.waitForResponse(response => response.request().method() === 'POST' && response.url().endsWith('/api/v1/quotes'));
+  await page.getByRole('button', { name: 'Create draft' }).click();
+  expect((await response).status()).toBe(201);
+  expect((await (await response).json()).currency).toBe('USD');
+});

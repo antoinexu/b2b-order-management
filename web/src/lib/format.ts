@@ -6,7 +6,8 @@ const moneyFormatters = new Map<string, Intl.NumberFormat>();
 export function formatMoney(cents: number, currency = 'USD'): string {
   let formatter = moneyFormatters.get(currency);
   if (!formatter) {
-    formatter = new Intl.NumberFormat('en-US', { style: 'currency', currency });
+    // Amounts are stored in hundredths, so always show two decimals, even for legacy data in other currencies.
+    formatter = new Intl.NumberFormat('en-US', { style: 'currency', currency, minimumFractionDigits: 2, maximumFractionDigits: 2 });
     moneyFormatters.set(currency, formatter);
   }
   return formatter.format(cents / 100);
@@ -20,6 +21,17 @@ export function parseMoneyToCents(input: string): number | null {
   const cents = Number(whole) * 100 + Number(fraction.padEnd(2, '0'));
   return isMoneyCents(cents) ? cents : null;
 }
+
+/** Currencies whose minor unit is two decimals: the only ones the API accepts, since money is stored in hundredths. */
+export const SUPPORTED_CURRENCIES: string[] = (() => {
+  try {
+    return Intl.supportedValuesOf('currency').filter(
+      (code) => new Intl.NumberFormat('en', { style: 'currency', currency: code }).resolvedOptions().maximumFractionDigits === 2,
+    );
+  } catch {
+    return ['USD', 'EUR', 'GBP'];
+  }
+})();
 
 export const centsToInput = (cents: number) => (cents / 100).toFixed(2);
 

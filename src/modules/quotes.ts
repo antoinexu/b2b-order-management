@@ -7,8 +7,9 @@ import { invalidState, notFound } from '../lib/errors';
 import { doc } from '../lib/openapi';
 import { IdParams, paginated, PaginationQuery, z } from '../lib/zod';
 import { auth, requirePermission, type AuthContext } from '../middleware/auth';
-import { assertCustomer, Currency, LineItem, LineItemInput, nextDocumentNumber, resolveLines, TaxRateBps, type Tx } from './line-items';
+import { assertCustomer, Currency, DocumentCurrency, LineItem, LineItemInput, nextDocumentNumber, resolveLines, TaxRateBps, type Tx } from './line-items';
 import { insertOrder, loadOrder, Order } from './orders';
+import { enforcePricingPolicy } from './pricing-policy';
 
 const Status = z.enum(QUOTE_STATUSES);
 const IsoDate = z.iso.date().openapi({ example: '2026-12-31' });
@@ -17,7 +18,7 @@ const CreateQuoteBody = z
   .object({
     customerId: z.uuid(),
     validUntil: IsoDate.nullish(),
-    currency: Currency.default('USD'),
+    currency: DocumentCurrency,
     taxRateBps: TaxRateBps.default(0),
     notes: z.string().trim().max(2000).nullish(),
     items: z.array(LineItemInput).min(1).max(200),
@@ -181,7 +182,9 @@ export function quotesRouter(db: DB) {
     const body = CreateQuoteBody.parse(req.body);
     const quote = await db.transaction(async (tx) => {
       await assertCustomer(tx, ctx.organizationId, body.customerId);
-      const { lines, totals } = await resolveLines(tx, ctx.organizationId, body.items, body.taxRateBps);
+      const currency = body.currency ?? ctx.currency;
+      const { lines, totals, catalogPrices } = await resolveLines(tx, ctx.organizationId, body.items, body.taxRateBps);
+      await enforcePricingPolicy(tx, ctx, { lines, catalogPrices, currency });
       const number = await nextDocumentNumber(tx, ctx.organizationId, 'quote');
       const [row] = await tx
         .insert(quotes)
@@ -190,7 +193,7 @@ export function quotesRouter(db: DB) {
           number,
           customerId: body.customerId,
           validUntil: body.validUntil ?? null,
-          currency: body.currency,
+          currency,
           taxRateBps: body.taxRateBps,
           notes: body.notes ?? null,
           ...totals,
@@ -221,11 +224,15 @@ export function quotesRouter(db: DB) {
       requireStatus(current.status, 'draft', 'edit');
       if (fields.customerId) await assertCustomer(tx, organizationId, fields.customerId);
 
-      if (items || fields.taxRateBps !== undefined) {
+      // Agreed prices hold only for the customer and currency they were given for.
+      const retargeted = (fields.customerId !== undefined && fields.customerId !== current.customerId)
+        || (fields.currency !== undefined && fields.currency !== current.currency);
+      if (items || fields.taxRateBps !== undefined || retargeted) {
         // Re-price whenever lines or tax change. Without new items, existing lines are kept as-is.
+        const existing = await tx.select().from(quoteItems).where(eq(quoteItems.quoteId, id)).orderBy(asc(quoteItems.position));
         const lineInputs =
           items ??
-          (await tx.select().from(quoteItems).where(eq(quoteItems.quoteId, id)).orderBy(asc(quoteItems.position))).map((l) => ({
+          existing.map((l) => ({
             productId: l.productId ?? undefined,
             description: l.description,
             quantity: l.quantity,
@@ -233,7 +240,13 @@ export function quotesRouter(db: DB) {
             discountBps: l.discountBps,
           }));
         const taxRateBps = fields.taxRateBps ?? current.taxRateBps;
-        const { lines, totals } = await resolveLines(tx, organizationId, lineInputs, taxRateBps);
+        const { lines, totals, catalogPrices } = await resolveLines(tx, organizationId, lineInputs, taxRateBps);
+        // A tax change alone keeps agreed prices. New or changed lines, or a new customer or currency, are checked.
+        if (items || retargeted) {
+          await enforcePricingPolicy(tx, ctx, {
+            lines, catalogPrices, currency: fields.currency ?? current.currency, existing: retargeted ? [] : existing,
+          });
+        }
         await tx.delete(quoteItems).where(eq(quoteItems.quoteId, id));
         await tx.insert(quoteItems).values(lines.map((l) => ({ ...l, quoteId: id })));
         await tx.update(quotes).set({ ...fields, ...totals }).where(eq(quotes.id, id));

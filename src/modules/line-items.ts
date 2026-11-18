@@ -1,6 +1,7 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { DB } from '../db/client';
 import { customers, organizations, products } from '../db/schema';
+import { isSupportedCurrency } from '../lib/currency';
 import { badRequest, notFound } from '../lib/errors';
 import { computeTotals, formatDocumentNumber, lineTotalCents, type Totals } from '../lib/pricing';
 import { MoneyCents, z } from '../lib/zod';
@@ -32,7 +33,12 @@ export const LineItem = z
   .openapi('LineItem');
 
 export const TaxRateBps = z.number().int().min(0).max(10_000).openapi({ description: 'Tax rate, 825 = 8.25%' });
-export const Currency = z.string().regex(/^[A-Z]{3}$/, 'Must be an ISO 4217 code like USD');
+export const Currency = z
+  .string()
+  .regex(/^[A-Z]{3}$/, 'Must be an ISO 4217 code like USD')
+  .refine(isSupportedCurrency, 'Must be a currency with two decimal places, such as USD, EUR or GBP');
+/** Document currency on create; omitted means the organization's base currency. */
+export const DocumentCurrency = Currency.optional().openapi({ description: "Defaults to the organization's base currency" });
 
 export interface ResolvedLine {
   productId: string | null;
@@ -53,7 +59,7 @@ export async function resolveLines(
   organizationId: string,
   items: z.infer<typeof LineItemInput>[],
   taxRateBps: number,
-): Promise<{ lines: ResolvedLine[]; totals: Totals }> {
+): Promise<{ lines: ResolvedLine[]; totals: Totals; catalogPrices: Map<string, number> }> {
   const productIds = [...new Set(items.flatMap((i) => (i.productId ? [i.productId] : [])))];
   const catalog = productIds.length
     ? await db
@@ -82,7 +88,11 @@ export async function resolveLines(
     };
   });
 
-  return { lines, totals: computeTotals(lines.map((l) => l.lineTotalCents), taxRateBps) };
+  return {
+    lines,
+    totals: computeTotals(lines.map((l) => l.lineTotalCents), taxRateBps),
+    catalogPrices: new Map(catalog.map((p) => [p.id, p.unitPriceCents])),
+  };
 }
 
 export async function assertCustomer(db: DbOrTx, organizationId: string, customerId: string) {

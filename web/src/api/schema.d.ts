@@ -1003,7 +1003,7 @@ export interface paths {
         options?: never;
         head?: never;
         /**
-         * Update the organization's name or time zone
+         * Update the organization's name, time zone, sales discount limit or base currency
          * @description Requires permission: `organization:write`
          */
         patch: {
@@ -2536,6 +2536,8 @@ export interface components {
             id: string;
             name: string;
             timezone: string;
+            maxDiscountBps: number;
+            currency: string;
         };
         Customer: {
             /** Format: uuid */
@@ -2632,8 +2634,8 @@ export interface components {
             customerId: string;
             /** @description Customer's purchase order number */
             poNumber?: string | null;
-            /** @default USD */
-            currency: string;
+            /** @description Defaults to the organization's base currency */
+            currency?: string;
             /**
              * @description Tax rate, 825 = 8.25%
              * @default 0
@@ -2671,6 +2673,10 @@ export interface components {
              * @example America/New_York
              */
             timezone?: string;
+            /** @description Largest effective discount off the catalog price, in bps, for users without pricing:override. They cannot discount custom lines at all. */
+            maxDiscountBps?: number;
+            /** @description Base currency the catalog is priced in. Changing it does not convert existing prices. */
+            currency?: string;
         };
         Product: {
             /** Format: uuid */
@@ -2747,8 +2753,8 @@ export interface components {
              * @example 2026-12-31
              */
             validUntil?: string | null;
-            /** @default USD */
-            currency: string;
+            /** @description Defaults to the organization's base currency */
+            currency?: string;
             /**
              * @description Tax rate, 825 = 8.25%
              * @default 0

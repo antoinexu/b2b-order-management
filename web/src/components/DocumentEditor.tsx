@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { centsToInput, formatMoney, parseMoneyToCents, parsePercentToBps, todayIn } from '@/lib/format';
-import { computeTotals, lineTotalCents, MAX_LINE_ITEMS, MAX_MONEY_CENTS, MAX_QUANTITY } from '@/lib/pricing';
+import { computeTotals, discountViolation, lineTotalCents, MAX_LINE_ITEMS, MAX_MONEY_CENTS, MAX_QUANTITY } from '@/lib/pricing';
 
 
 interface LineDraft {
@@ -20,7 +20,14 @@ interface LineDraft {
   quantity: string;
   price: string;
   discount: string; // percent
+  /** Catalog price of the product picked in this session; unknown for lines loaded from a saved document. */
+  catalogPriceCents?: number;
+  /** Pricing as saved, so lines kept unchanged aren't rechecked against the discount limit (the API does the same). */
+  saved?: string;
 }
+
+const pricingKey = (productId: string | null, quantity: number, unitPriceCents: number | null, discountBps: number | null) =>
+  `${productId ?? ''}|${quantity}|${unitPriceCents}|${discountBps}`;
 
 export interface DocumentDraft {
   customerId: string;
@@ -55,8 +62,9 @@ function parseLine(line: LineDraft) {
 }
 
 export function DocumentEditor({ kind, initial, submitLabel, isSubmitting, error, onSubmit, onCancel }: Props) {
-  const { me } = useAuth();
+  const { me, can } = useAuth();
   const timeZone = me?.organization.timezone ?? 'UTC';
+  const maxDiscountBps = can('pricing:override') ? null : me?.organization.maxDiscountBps ?? 0;
   const [customerId, setCustomerId] = useState(initial?.customerId ?? '');
   const [taxRate, setTaxRate] = useState(initial ? String(initial.taxRateBps / 100) : '0');
   const [validUntil, setValidUntil] = useState(initial?.validUntil ?? '');
@@ -71,6 +79,7 @@ export function DocumentEditor({ kind, initial, submitLabel, isSubmitting, error
           quantity: String(item.quantity),
           price: centsToInput(item.unitPriceCents),
           discount: String(item.discountBps / 100),
+          saved: pricingKey(item.productId, item.quantity, item.unitPriceCents, item.discountBps),
         }))
       : [blankLine()],
   );
@@ -81,18 +90,36 @@ export function DocumentEditor({ kind, initial, submitLabel, isSubmitting, error
   const pickProduct = (key: number, option: CatalogOption | null) => {
     const product = option?.product;
     updateLine(key, product
-      ? { productId: product.id, description: product.name, price: centsToInput(product.unitPriceCents) }
-      : { productId: option?.id ?? '' });
+      ? { productId: product.id, description: product.name, price: centsToInput(product.unitPriceCents), catalogPriceCents: product.unitPriceCents }
+      : { productId: option?.id ?? '', catalogPriceCents: undefined });
   };
 
-  const currency = initial?.currency ?? 'USD';
+  // New documents use the organization's base currency, which the catalog is priced in.
+  const baseCurrency = me?.organization.currency ?? 'USD';
+  // Fixed when the form opens: prices typed so far are in this currency, so a later change to the
+  // organization's base currency must not silently relabel them.
+  const [currency] = useState(() => initial?.currency ?? baseCurrency);
+  const baseCurrencyChanged = !initial && currency !== baseCurrency;
+  // Sales can keep a manager's lines in another currency, but not add or change any.
+  const foreignCurrency = !!initial && maxDiscountBps !== null && currency !== baseCurrency;
   const money = (cents: number | null | undefined) => cents == null ? '—' : formatMoney(cents, currency);
   const taxRateBps = parsePercentToBps(taxRate);
   const parsed = lines.map(parseLine);
+  // Catalog prices can change while editing, so catalog checks are advisory. The API checks current prices on save.
+  const limitChecks = lines.map((line, i) => {
+    const p = parsed[i]!;
+    if (maxDiscountBps === null || !p.valid) return null;
+    const productId = line.productId === CUSTOM_ITEM ? null : line.productId;
+    if (line.saved === pricingKey(productId, p.quantity, p.unitPriceCents, p.discountBps)) return null;
+    if (productId !== null && line.catalogPriceCents === undefined) return null;
+    const message = discountViolation(p.unitPriceCents!, p.discountBps!, line.catalogPriceCents, maxDiscountBps);
+    return message ? { message, blocking: productId === null } : null;
+  });
   const lineTotals = parsed.map((p) => (p.valid ? lineTotalCents(p.quantity, p.unitPriceCents!, p.discountBps!) : null));
   const totals = lineTotals.every((total) => total !== null) && taxRateBps !== null
     ? computeTotals(lineTotals as number[], taxRateBps) : null;
-  const canSubmit = customerId !== '' && totals !== null && lines.length > 0 && lines.length <= MAX_LINE_ITEMS && parsed.every((p) => p.valid);
+  const canSubmit = customerId !== '' && totals !== null && lines.length > 0 && lines.length <= MAX_LINE_ITEMS && parsed.every((p) => p.valid)
+    && limitChecks.every((check) => !check?.blocking);
   const pricingError = parsed.every((p) => p.valid) && taxRateBps !== null && !totals
     ? `Line amounts and the total including tax must not exceed ${money(MAX_MONEY_CENTS)}.` : null;
 
@@ -149,6 +176,24 @@ export function DocumentEditor({ kind, initial, submitLabel, isSubmitting, error
       <Card>
         <CardHeader><CardTitle>Line items</CardTitle></CardHeader>
         <CardContent className="grid gap-3">
+          {baseCurrencyChanged && (
+            <p role="alert" className="text-sm text-destructive">
+              The organization's base currency changed to {baseCurrency} while you were editing. This {kind} is still in {currency} and
+              its prices were not converted. Start a new {kind} to price it in {baseCurrency}.
+            </p>
+          )}
+          {foreignCurrency && (
+            <p role="status" className="text-sm text-muted-foreground">
+              This {kind} is priced in {currency}, but the catalog is in {baseCurrency}. You can edit other details and keep its lines
+              as they are; ask a manager or admin to change or add lines.
+            </p>
+          )}
+          {maxDiscountBps !== null && (
+            <p className="text-sm text-muted-foreground">
+              You can give up to {Number((maxDiscountBps / 100).toFixed(2))}% off catalog prices, counting both price changes and discounts.
+              Custom lines can't be discounted. Ask a manager or admin for anything beyond that.
+            </p>
+          )}
           <div className="hidden grid-cols-[minmax(0,2.2fr)_minmax(0,2fr)_5rem_7rem_5.5rem_7rem_2rem] gap-2 px-1 text-xs font-medium text-muted-foreground lg:grid">
             <span>Product</span><span>Description</span><span>Qty</span><span>Unit price</span><span>Discount %</span><span className="text-right">Line total</span><span />
           </div>
@@ -178,6 +223,13 @@ export function DocumentEditor({ kind, initial, submitLabel, isSubmitting, error
               </p>}
               {(!Number.isInteger(parsed[i]!.quantity) || parsed[i]!.quantity < 1 || parsed[i]!.quantity > MAX_QUANTITY)
                 && <p role="alert" className="col-span-full text-xs text-destructive">Quantity must be a whole number between 1 and {MAX_QUANTITY}.</p>}
+              {limitChecks[i] && (
+                <p role={limitChecks[i].blocking ? 'alert' : 'status'}
+                  className={`col-span-full text-xs ${limitChecks[i].blocking ? 'text-destructive' : 'text-muted-foreground'}`}>
+                  {limitChecks[i].blocking ? limitChecks[i].message
+                    : `Based on the last loaded catalog price: ${limitChecks[i].message} Current pricing will be checked when you save.`}
+                </p>
+              )}
             </div>
           ))}
           <div>

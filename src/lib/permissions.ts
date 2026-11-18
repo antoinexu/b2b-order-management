@@ -9,6 +9,7 @@ export const PERMISSIONS = [
   'customers:delete',
   'products:read',
   'products:write',
+  'pricing:override',
   'quotes:read',
   'quotes:write',
   'orders:read',
@@ -25,7 +26,7 @@ const READ_ALL: Permission[] = ['customers:read', 'products:read', 'quotes:read'
  * Role-based access control matrix.
  * - admin:   full access, including user management and organization settings
  * - manager: runs the business (pricing, catalog, order fulfilment), cannot manage users or settings
- * - sales:   manages customers, builds quotes, places orders
+ * - sales:   manages customers, builds quotes, places orders, within the organization's discount limit
  * - viewer:  read-only access to business data
  */
 export const ROLE_PERMISSIONS: Record<UserRole, ReadonlySet<Permission>> = {

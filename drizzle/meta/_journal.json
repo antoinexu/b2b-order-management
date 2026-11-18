@@ -22,6 +22,13 @@
       "when": 1795038242668,
       "tag": "0002_quote_history_password_timezone",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1795041469709,
+      "tag": "0003_pricing_policy",
+      "breakpoints": true
     }
   ]
 }

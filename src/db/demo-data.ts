@@ -60,7 +60,7 @@ export async function seedDemoData(db: DB): Promise<boolean> {
       ])
       .returning();
 
-    const ctx = { userId: sales.id, organizationId, role: sales.role, timezone: org!.timezone };
+    const ctx = { userId: sales.id, organizationId, role: sales.role, timezone: org!.timezone, currency: org!.currency };
 
     async function demoQuote(customerId: string, status: QuoteStatus, items: Parameters<typeof resolveLines>[2], validInDays = 30) {
       const { lines, totals } = await resolveLines(tx, organizationId, items, 825);

@@ -22,6 +22,10 @@ export const organizations = pgTable('organizations', {
   name: text('name').notNull(),
   /** IANA time zone; quote validity dates end at midnight in this zone. */
   timezone: text('timezone').notNull().default('UTC'),
+  /** Largest effective discount (bps) that users without `pricing:override` may give on a line. */
+  maxDiscountBps: integer('max_discount_bps').notNull().default(2000),
+  /** ISO 4217 code the catalog is priced in. Users without `pricing:override` can only quote and order in it. */
+  currency: text('currency').notNull().default('USD'),
   quoteSeq: integer('quote_seq').notNull().default(0),
   orderSeq: integer('order_seq').notNull().default(0),
   ...timestamps,

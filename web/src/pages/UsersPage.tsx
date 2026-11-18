@@ -16,7 +16,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { capitalize, formatDate, todayIn } from '@/lib/format';
+import { capitalize, formatBps, formatDate, formatMoney, parsePercentToBps, SUPPORTED_CURRENCIES, todayIn } from '@/lib/format';
 
 const ROLE_DESCRIPTIONS: Record<UserRole, string> = {
   admin: 'Full access, including team management',
@@ -137,13 +137,23 @@ function OrganizationSettings() {
   const { api, can, me } = useAuth();
   const queryClient = useQueryClient();
   const org = me?.organization;
-  const [form, setForm] = useState({ name: org?.name ?? '', timezone: org?.timezone ?? 'UTC' });
+  const [form, setForm] = useState({
+    name: org?.name ?? '',
+    timezone: org?.timezone ?? 'UTC',
+    maxDiscount: String((org?.maxDiscountBps ?? 0) / 100),
+    currency: org?.currency ?? 'USD',
+  });
+  const currency = form.currency.trim().toUpperCase();
+  const currencyValid = SUPPORTED_CURRENCIES.includes(currency);
+  const maxDiscountBps = parsePercentToBps(form.maxDiscount);
   const canWrite = can('organization:write');
   const save = useMutation({
-    mutationFn: () => unwrap(api.PATCH('/organization', { body: { name: form.name.trim(), timezone: form.timezone.trim() } })),
+    mutationFn: () => unwrap(api.PATCH('/organization', {
+      body: { name: form.name.trim(), timezone: form.timezone.trim(), maxDiscountBps: maxDiscountBps!, currency },
+    })),
     onSuccess: (saved) => {
       // Adopt the server's canonical values (e.g. "america/new_york" -> "America/New_York") so the form is clean again.
-      setForm({ name: saved.name, timezone: saved.timezone });
+      setForm({ name: saved.name, timezone: saved.timezone, maxDiscount: String(saved.maxDiscountBps / 100), currency: saved.currency });
       // The zone changes which sent quotes count as expired, so refresh quotes along with the account.
       queryClient.invalidateQueries({ queryKey: ['me'] });
       queryClient.invalidateQueries({ queryKey: ['quotes'] });
@@ -152,8 +162,10 @@ function OrganizationSettings() {
     meta: { inlineError: true },
   });
   if (!org) return null;
-  const dirty = form.name.trim() !== org.name || form.timezone.trim() !== org.timezone;
-  const submit = (e: FormEvent) => { e.preventDefault(); if (dirty) save.mutate(); };
+  const dirty = form.name.trim() !== org.name || form.timezone.trim() !== org.timezone || maxDiscountBps !== org.maxDiscountBps
+    || currency !== org.currency;
+  const valid = maxDiscountBps !== null && currencyValid;
+  const submit = (e: FormEvent) => { e.preventDefault(); if (dirty && valid) save.mutate(); };
 
   return (
     <Card className="mt-8 max-w-2xl">
@@ -175,10 +187,25 @@ function OrganizationSettings() {
               onChange={(e) => setForm({ ...form, timezone: e.target.value })} />
             <datalist id="org-timezones">{TIME_ZONES.map((zone) => <option key={zone} value={zone} />)}</datalist>
           </FormField>
+          <FormField id="org-currency" label="Base currency"
+            error={currencyValid ? null : 'Enter a currency with two decimal places, such as USD, EUR or GBP'}
+            hint={currency !== org.currency
+              ? `Catalog prices are not converted: ${formatMoney(10_000, org.currency)} will read as ${formatMoney(10_000, currencyValid ? currency : org.currency)}.`
+              : 'Catalog prices are in this currency. Sales reps can only quote and order in it.'}>
+            <Input id="org-currency" required maxLength={3} list="org-currencies" disabled={!canWrite} value={form.currency} className="uppercase"
+              aria-invalid={!currencyValid} onChange={(e) => setForm({ ...form, currency: e.target.value })} />
+            <datalist id="org-currencies">{SUPPORTED_CURRENCIES.map((code) => <option key={code} value={code} />)}</datalist>
+          </FormField>
+          <FormField id="org-max-discount" label="Sales discount limit (%)"
+            error={maxDiscountBps === null ? 'Enter a percentage between 0 and 100' : null}
+            hint={`Most a sales rep can take off catalog prices (now ${formatBps(org.maxDiscountBps)}). Managers and admins aren't limited.`}>
+            <Input id="org-max-discount" inputMode="decimal" required disabled={!canWrite} value={form.maxDiscount}
+              aria-invalid={maxDiscountBps === null} onChange={(e) => setForm({ ...form, maxDiscount: e.target.value })} />
+          </FormField>
           {save.error && <p role="alert" className="text-sm text-destructive sm:col-span-2">{errorMessage(save.error)}</p>}
           {canWrite && (
             <div className="sm:col-span-2">
-              <Button type="submit" disabled={!dirty || save.isPending}>{save.isPending ? 'Saving…' : 'Save'}</Button>
+              <Button type="submit" disabled={!dirty || !valid || save.isPending}>{save.isPending ? 'Saving…' : 'Save'}</Button>
             </div>
           )}
         </form>

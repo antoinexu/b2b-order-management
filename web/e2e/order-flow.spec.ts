@@ -15,7 +15,7 @@ async function choose(page: Page, combobox: string, option: string | RegExp) {
 }
 
 test('sales quotes a customer, converts it, and a manager fulfils the order', async ({ page }) => {
-  // --- Sales builds a quote with a catalog line and a discounted custom line ---
+  // --- Sales builds a quote with a catalog line and a custom service line ---
   await loginAs(page, 'sales');
   await nav(page, 'Quotes').click();
   await page.getByRole('link', { name: 'New quote' }).click();
@@ -29,7 +29,18 @@ test('sales quotes a customer, converts it, and a manager fulfils the order', as
   await choose(page, 'Line 2 product', 'Custom item');
   await page.getByLabel('Line 2 description').fill('Installation service');
   await page.getByLabel('Line 2 unit price').fill('100');
-  await page.getByLabel('Line 2 discount percent').fill('25'); // $75.00
+  // Sales can't discount custom lines, but can price them.
+  await page.getByLabel('Line 2 discount percent').fill('25');
+  await expect(page.getByRole('alert')).toHaveText("Custom lines can't be discounted.");
+  await expect(page.getByRole('button', { name: 'Create draft' })).toBeDisabled();
+  await page.getByLabel('Line 2 discount percent').fill('0');
+  await page.getByLabel('Line 2 unit price').fill('75'); // $75.00
+  // Catalog discounts show an advisory preview; current prices are enforced by the API on save.
+  await page.getByLabel('Line 1 discount percent').fill('25');
+  await expect(page.getByRole('status').filter({ hasText: '25% off the catalog price' }))
+    .toContainText('Current pricing will be checked when you save.');
+  await expect(page.getByRole('button', { name: 'Create draft' })).toBeEnabled();
+  await page.getByLabel('Line 1 discount percent').fill('0');
 
   // Live preview uses the same integer math as the server: 320.00 + 10% tax.
   await expect(page.getByText('$352.00')).toBeVisible();

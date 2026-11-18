@@ -40,7 +40,7 @@ it('upgrades an existing database without deleting users or reapplying migration
     expect(migrated).toHaveLength(1);
     expect(migrated[0]).toMatchObject({ id: user.rows[0]!.id, email: 'existing@example.com', role: 'admin', deletedAt: null, tokenVersion: 0 });
     const [organization] = await db.select().from(schema.organizations);
-    expect(organization?.timezone).toBe('UTC');
+    expect(organization).toMatchObject({ timezone: 'UTC', maxDiscountBps: 2000, currency: 'USD' });
     // Existing quotes get exactly one backfilled creation entry, even though migrate ran twice.
     const history = await db.select().from(schema.quoteStatusHistory);
     expect(history).toEqual([expect.objectContaining({

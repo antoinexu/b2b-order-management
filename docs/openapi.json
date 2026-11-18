@@ -207,12 +207,20 @@
           },
           "timezone": {
             "type": "string"
+          },
+          "maxDiscountBps": {
+            "type": "integer"
+          },
+          "currency": {
+            "type": "string"
           }
         },
         "required": [
           "id",
           "name",
-          "timezone"
+          "timezone",
+          "maxDiscountBps",
+          "currency"
         ]
       },
       "Customer": {
@@ -586,7 +594,7 @@
           "currency": {
             "type": "string",
             "pattern": "^[A-Z]{3}$",
-            "default": "USD"
+            "description": "Defaults to the organization's base currency"
           },
           "taxRateBps": {
             "type": "integer",
@@ -685,6 +693,17 @@
             "maxLength": 64,
             "example": "America/New_York",
             "description": "IANA time zone; quote validity dates end at midnight in this zone"
+          },
+          "maxDiscountBps": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10000,
+            "description": "Largest effective discount off the catalog price, in bps, for users without pricing:override. They cannot discount custom lines at all."
+          },
+          "currency": {
+            "type": "string",
+            "pattern": "^[A-Z]{3}$",
+            "description": "Base currency the catalog is priced in. Changing it does not convert existing prices."
           }
         },
         "minProperties": 1,
@@ -971,7 +990,7 @@
           "currency": {
             "type": "string",
             "pattern": "^[A-Z]{3}$",
-            "default": "USD"
+            "description": "Defaults to the organization's base currency"
           },
           "taxRateBps": {
             "type": "integer",
@@ -2239,7 +2258,7 @@
         "tags": [
           "Organization"
         ],
-        "summary": "Update the organization's name or time zone",
+        "summary": "Update the organization's name, time zone, sales discount limit or base currency",
         "description": "Requires permission: `organization:write`",
         "security": [
           {

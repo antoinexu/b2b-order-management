@@ -40,7 +40,12 @@ Sign in with one click as **Admin**, **Manager**, **Sales** or **Viewer** to see
   Every status change is recorded with who made it and when.
 - **Orders:** created directly or converted from an accepted quote (at most once per quote), with lifecycle
   pending → confirmed → shipped → delivered (or cancelled) and a full status history.
-- **Correct money math:** integer cents and basis points, so totals have no floating-point drift. Prices are copied onto
+- **Discount limit:** sales reps can take at most a configurable share off catalog prices (20% by default), counting
+  price cuts and discounts together, and can't discount custom lines. They can only price in the organization's base
+  currency (the one the catalog is priced in), and a manager-approved price is rechecked if the quote moves to another
+  customer or currency. Managers and admins can set any price.
+- **Correct money math:** integer cents and basis points, so totals have no floating-point drift. Only currencies with
+  two decimal places (USD, EUR, GBP, CNY, …) are accepted, since amounts are stored in hundredths. Prices are copied onto
   each line item, so later catalog changes never alter existing quotes or orders.
 - **Concurrency-safe:** status transitions lock their rows inside transactions; document numbers are allocated atomically.
 - **API contract:** OpenAPI 3 generated from the same Zod schemas that validate requests, so the docs can't drift from the code.
@@ -139,11 +144,13 @@ Frontend (`web/`):
 | Create / edit customers | ✅ | ✅ | ✅ | |
 | Delete customers | ✅ | ✅ | | |
 | Manage product catalog & pricing | ✅ | ✅ | | |
+| Price beyond the discount limit | ✅ | ✅ | | |
 | Create / send / accept quotes | ✅ | ✅ | ✅ | |
 | Create orders, convert quotes | ✅ | ✅ | ✅ | |
 | Change order status (fulfilment) | ✅ | ✅ | | |
 | View users | ✅ | ✅ | | |
 | Manage users & roles | ✅ | | | |
+| Organization settings (time zone, discount limit, base currency) | ✅ | | | |
 
 The matrix lives in [`src/lib/permissions.ts`](src/lib/permissions.ts).
 
@@ -153,7 +160,8 @@ All endpoints are under `/api/v1`. Full request and response schemas are in Swag
 
 | Area | Endpoints |
 | --- | --- |
-| Auth | `POST /auth/register`, `POST /auth/login`, `GET /auth/me` |
+| Auth | `POST /auth/register`, `POST /auth/login`, `POST /auth/change-password`, `GET /auth/me` |
+| Organization | `PATCH /organization` (name, time zone, discount limit, base currency) |
 | Users | `GET/POST /users`, `PATCH/DELETE /users/{id}` |
 | Customers | `GET/POST /customers`, `GET/PATCH/DELETE /customers/{id}` |
 | Products | `GET/POST /products`, `GET/PATCH/DELETE /products/{id}` |

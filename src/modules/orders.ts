@@ -7,10 +7,11 @@ import { doc } from '../lib/openapi';
 import { IdParams, paginated, PaginationQuery, z } from '../lib/zod';
 import { auth, requirePermission, type AuthContext } from '../middleware/auth';
 import {
-  assertCustomer, Currency, LineItem, LineItemInput, nextDocumentNumber, resolveLines, TaxRateBps,
+  assertCustomer, DocumentCurrency, LineItem, LineItemInput, nextDocumentNumber, resolveLines, TaxRateBps,
   type ResolvedLine, type Tx,
 } from './line-items';
 import type { Totals } from '../lib/pricing';
+import { enforcePricingPolicy } from './pricing-policy';
 
 /** Allowed order lifecycle transitions. Terminal states: delivered, cancelled. */
 export const ORDER_TRANSITIONS: Record<OrderStatus, readonly OrderStatus[]> = {
@@ -27,7 +28,7 @@ const CreateOrderBody = z
   .object({
     customerId: z.uuid(),
     poNumber: z.string().trim().max(100).nullish().openapi({ description: "Customer's purchase order number" }),
-    currency: Currency.default('USD'),
+    currency: DocumentCurrency,
     taxRateBps: TaxRateBps.default(0),
     notes: z.string().trim().max(2000).nullish(),
     items: z.array(LineItemInput).min(1).max(200),
@@ -158,8 +159,10 @@ export function ordersRouter(db: DB) {
     const body = CreateOrderBody.parse(req.body);
     const order = await db.transaction(async (tx) => {
       await assertCustomer(tx, ctx.organizationId, body.customerId);
-      const { lines, totals } = await resolveLines(tx, ctx.organizationId, body.items, body.taxRateBps);
-      const id = await insertOrder(tx, ctx, { ...body, lines, totals });
+      const currency = body.currency ?? ctx.currency;
+      const { lines, totals, catalogPrices } = await resolveLines(tx, ctx.organizationId, body.items, body.taxRateBps);
+      await enforcePricingPolicy(tx, ctx, { lines, catalogPrices, currency });
+      const id = await insertOrder(tx, ctx, { ...body, currency, lines, totals });
       return loadOrder(tx, ctx.organizationId, id);
     });
     res.status(201).json(order);

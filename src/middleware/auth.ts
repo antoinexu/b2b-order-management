@@ -12,6 +12,8 @@ export interface AuthContext {
   role: UserRole;
   /** The organization's IANA time zone. */
   timezone: string;
+  /** The organization's base currency, which the catalog is priced in. */
+  currency: string;
 }
 
 declare global {
@@ -64,6 +66,7 @@ export function authenticate(db: DB, secret: string): RequestHandler {
         deletedAt: users.deletedAt,
         tokenVersion: users.tokenVersion,
         timezone: organizations.timezone,
+        currency: organizations.currency,
       })
       .from(users)
       .innerJoin(organizations, eq(organizations.id, users.organizationId))
@@ -72,7 +75,13 @@ export function authenticate(db: DB, secret: string): RequestHandler {
     if (!user || user.deletedAt || user.organizationId !== payload.org) throw unauthorized('User no longer exists');
     if ((payload.ver ?? 0) !== user.tokenVersion) throw unauthorized('Session has been revoked; please sign in again');
 
-    req.auth = { userId: user.id, organizationId: user.organizationId, role: user.role, timezone: user.timezone };
+    req.auth = {
+      userId: user.id,
+      organizationId: user.organizationId,
+      role: user.role,
+      timezone: user.timezone,
+      currency: user.currency,
+    };
     next();
   };
 }

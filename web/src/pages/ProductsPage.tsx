@@ -22,7 +22,8 @@ import { usePageBounds } from '@/lib/use-page-bounds';
 const PAGE_SIZE = 20;
 
 export function ProductsPage() {
-  const { api, can } = useAuth();
+  const { api, can, me } = useAuth();
+  const baseCurrency = me?.organization.currency ?? 'USD';
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const q = useDebounced(search.trim());
@@ -72,7 +73,7 @@ export function ProductsPage() {
                     <TableCell className="font-mono text-xs">{p.sku}</TableCell>
                     <TableCell className="font-medium">{p.name}</TableCell>
                     <TableCell className="hidden sm:table-cell">{p.unit}</TableCell>
-                    <TableCell className="text-right tabular-nums">{formatMoney(p.unitPriceCents)}</TableCell>
+                    <TableCell className="text-right tabular-nums">{formatMoney(p.unitPriceCents, baseCurrency)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -88,7 +89,7 @@ export function ProductsPage() {
 }
 
 function ProductDialog({ product, onClose }: { product: Product | null; onClose: () => void }) {
-  const { api } = useAuth();
+  const { api, me } = useAuth();
   const queryClient = useQueryClient();
   const [form, setForm] = useState({
     sku: product?.sku ?? '',
@@ -148,7 +149,7 @@ function ProductDialog({ product, onClose }: { product: Product | null; onClose:
           <FormField id="name" label="Name" className="sm:col-span-2">
             <Input id="name" required maxLength={200} value={form.name} onChange={set('name')} />
           </FormField>
-          <FormField id="price" label="Unit price (USD)" error={form.price && priceCents === null ? 'Enter an amount like 24.50' : null}>
+          <FormField id="price" label={`Unit price (${me?.organization.currency ?? 'USD'})`} error={form.price && priceCents === null ? 'Enter an amount like 24.50' : null}>
             <Input id="price" inputMode="decimal" required placeholder="0.00" value={form.price} onChange={set('price')}
               aria-invalid={!!form.price && priceCents === null} />
           </FormField>
