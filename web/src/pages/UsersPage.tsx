@@ -11,11 +11,12 @@ import { PageHeader } from '@/components/PageHeader';
 import { ErrorState, TableSkeleton } from '@/components/States';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { capitalize, formatDate } from '@/lib/format';
+import { capitalize, formatDate, todayIn } from '@/lib/format';
 
 const ROLE_DESCRIPTIONS: Record<UserRole, string> = {
   admin: 'Full access, including team management',
@@ -117,8 +118,72 @@ export function UsersPage() {
         ))}
       </div>
 
+      <OrganizationSettings />
+
       {inviting && <InviteDialog onClose={() => setInviting(false)} onDone={refresh} />}
     </>
+  );
+}
+
+const TIME_ZONES: string[] = (() => {
+  try {
+    return ['UTC', ...Intl.supportedValuesOf('timeZone').filter((zone) => zone !== 'UTC')];
+  } catch {
+    return ['UTC'];
+  }
+})();
+
+function OrganizationSettings() {
+  const { api, can, me } = useAuth();
+  const queryClient = useQueryClient();
+  const org = me?.organization;
+  const [form, setForm] = useState({ name: org?.name ?? '', timezone: org?.timezone ?? 'UTC' });
+  const canWrite = can('organization:write');
+  const save = useMutation({
+    mutationFn: () => unwrap(api.PATCH('/organization', { body: { name: form.name.trim(), timezone: form.timezone.trim() } })),
+    onSuccess: (saved) => {
+      // Adopt the server's canonical values (e.g. "america/new_york" -> "America/New_York") so the form is clean again.
+      setForm({ name: saved.name, timezone: saved.timezone });
+      // The zone changes which sent quotes count as expired, so refresh quotes along with the account.
+      queryClient.invalidateQueries({ queryKey: ['me'] });
+      queryClient.invalidateQueries({ queryKey: ['quotes'] });
+      toast.success(`Saved. Quote validity now follows ${saved.timezone} time.`);
+    },
+    meta: { inlineError: true },
+  });
+  if (!org) return null;
+  const dirty = form.name.trim() !== org.name || form.timezone.trim() !== org.timezone;
+  const submit = (e: FormEvent) => { e.preventDefault(); if (dirty) save.mutate(); };
+
+  return (
+    <Card className="mt-8 max-w-2xl">
+      <CardHeader>
+        <CardTitle>Organization</CardTitle>
+        <CardDescription>
+          Quotes stay valid through the end of their "valid until" date in this time zone.
+          It's {todayIn(org.timezone)} there now.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form className="grid gap-4 sm:grid-cols-2" onSubmit={submit}>
+          <FormField id="org-name" label="Name">
+            <Input id="org-name" required maxLength={200} disabled={!canWrite} value={form.name}
+              onChange={(e) => setForm({ ...form, name: e.target.value })} />
+          </FormField>
+          <FormField id="org-timezone" label="Time zone" hint={canWrite ? 'Type to search, e.g. Asia/Shanghai.' : 'Only admins can change this.'}>
+            <Input id="org-timezone" required list="org-timezones" maxLength={64} disabled={!canWrite} value={form.timezone}
+              onChange={(e) => setForm({ ...form, timezone: e.target.value })} />
+            <datalist id="org-timezones">{TIME_ZONES.map((zone) => <option key={zone} value={zone} />)}</datalist>
+          </FormField>
+          {save.error && <p role="alert" className="text-sm text-destructive sm:col-span-2">{errorMessage(save.error)}</p>}
+          {canWrite && (
+            <div className="sm:col-span-2">
+              <Button type="submit" disabled={!dirty || save.isPending}>{save.isPending ? 'Saving…' : 'Save'}</Button>
+            </div>
+          )}
+        </form>
+      </CardContent>
+    </Card>
   );
 }
 

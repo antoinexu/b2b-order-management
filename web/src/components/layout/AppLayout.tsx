@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { NavLink, Outlet } from 'react-router';
 import {
-  Boxes, Building2, FileText, LayoutDashboard, LogOut, Menu, Package, Users, X,
+  Boxes, Building2, FileText, KeyRound, LayoutDashboard, LogOut, Menu, Package, Users, X,
 } from 'lucide-react';
 import { useAuth } from '@/auth/AuthContext';
 import type { Permission } from '@/api/types';
+import { ChangePasswordDialog } from '@/components/ChangePasswordDialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { capitalize } from '@/lib/format';
@@ -21,6 +22,7 @@ const NAV: { to: string; label: string; icon: typeof LayoutDashboard; permission
 
 function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const { me, can, signOut } = useAuth();
+  const [changingPassword, setChangingPassword] = useState(false);
   return (
     <div className="flex h-full flex-col gap-4 p-4">
       <div className="px-2">
@@ -53,11 +55,15 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
             </div>
             <Badge variant="outline">{capitalize(me.user.role)}</Badge>
           </div>
-          <Button variant="ghost" size="sm" className="mt-3 w-full justify-start" onClick={signOut}>
+          <Button variant="ghost" size="sm" className="mt-3 w-full justify-start" onClick={() => setChangingPassword(true)}>
+            <KeyRound /> Change password
+          </Button>
+          <Button variant="ghost" size="sm" className="w-full justify-start" onClick={signOut}>
             <LogOut /> Sign out
           </Button>
         </div>
       )}
+      {changingPassword && <ChangePasswordDialog onClose={() => setChangingPassword(false)} />}
     </div>
   );
 }

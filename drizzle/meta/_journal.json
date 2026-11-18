@@ -15,6 +15,13 @@
       "when": 1794933081173,
       "tag": "0001_user_deactivation",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1795038242668,
+      "tag": "0002_quote_history_password_timezone",
+      "breakpoints": true
     }
   ]
 }

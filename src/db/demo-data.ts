@@ -4,7 +4,7 @@ import { resolveLines, nextDocumentNumber, type Tx } from '../modules/line-items
 import { insertOrder } from '../modules/orders';
 import type { DB } from './client';
 import {
-  customers, orders, orderStatusHistory, organizations, products, quoteItems, quotes, users,
+  customers, orders, orderStatusHistory, organizations, products, quoteItems, quotes, quoteStatusHistory, users,
   type OrderStatus, type QuoteStatus, type UserRole,
 } from './schema';
 
@@ -23,7 +23,7 @@ export async function seedDemoData(db: DB): Promise<boolean> {
 
   const passwordHash = await hashPassword(DEMO_PASSWORD);
   await db.transaction(async (tx) => {
-    const [org] = await tx.insert(organizations).values({ name: 'Acme Industrial Supply' }).returning();
+    const [org] = await tx.insert(organizations).values({ name: 'Acme Industrial Supply', timezone: 'America/Chicago' }).returning();
     const organizationId = org!.id;
 
     const roles: UserRole[] = ['admin', 'manager', 'sales', 'viewer'];
@@ -60,7 +60,7 @@ export async function seedDemoData(db: DB): Promise<boolean> {
       ])
       .returning();
 
-    const ctx = { userId: sales.id, organizationId, role: sales.role };
+    const ctx = { userId: sales.id, organizationId, role: sales.role, timezone: org!.timezone };
 
     async function demoQuote(customerId: string, status: QuoteStatus, items: Parameters<typeof resolveLines>[2], validInDays = 30) {
       const { lines, totals } = await resolveLines(tx, organizationId, items, 825);
@@ -72,6 +72,15 @@ export async function seedDemoData(db: DB): Promise<boolean> {
         })
         .returning();
       await tx.insert(quoteItems).values(lines.map((l) => ({ ...l, quoteId: quote!.id })));
+      // Status history walks the quote to its seeded status, one step a day, ending an hour ago.
+      const path: QuoteStatus[] = status === 'draft' ? ['draft'] : status === 'sent' ? ['draft', 'sent'] : ['draft', 'sent', status];
+      await tx.insert(quoteStatusHistory).values(path.map((to, i) => ({
+        quoteId: quote!.id,
+        fromStatus: i === 0 ? null : path[i - 1]!,
+        toStatus: to,
+        changedById: sales.id,
+        createdAt: new Date(Date.now() - 3_600_000 - (path.length - 1 - i) * 86_400_000),
+      })));
       return { quote: quote!, lines, totals };
     }
 

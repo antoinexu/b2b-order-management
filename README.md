@@ -31,10 +31,13 @@ Sign in with one click as **Admin**, **Manager**, **Sales** or **Viewer** to see
 
 - **Multi-tenancy:** each organization's data is fully isolated; cross-tenant access returns `404`.
 - **Authentication:** register an organization, log in with email/password (scrypt hashes), JWT bearer tokens.
+  Users can change their password; doing so revokes every previously issued token (per-user token version).
 - **RBAC:** four roles with a permission matrix. Role changes and user removal take effect immediately, without waiting for the token to expire.
 - **Customers & products:** CRUD, search, pagination, per-tenant unique SKUs.
 - **Quotes:** draft → sent → accepted / rejected / expired, line-item discounts, tax, sequential numbers (`Q-000001`).
-  A sent quote counts as expired as soon as its `validUntil` date has passed, even if nobody has acted on it.
+  A quote stays valid through the end of its `validUntil` date in the organization's time zone (set at registration,
+  editable by admins), and a sent quote counts as expired as soon as that day has passed, even if nobody has acted on it.
+  Every status change is recorded with who made it and when.
 - **Orders:** created directly or converted from an accepted quote (at most once per quote), with lifecycle
   pending → confirmed → shipped → delivered (or cancelled) and a full status history.
 - **Correct money math:** integer cents and basis points, so totals have no floating-point drift. Prices are copied onto

@@ -30,7 +30,6 @@ function SessionTree({ session }: { session: SessionSnapshot }) {
     <QueryClientProvider client={queryClient}>
       <AuthProvider session={session}>
         <RouterProvider router={router} />
-        <Toaster richColors position="bottom-right" />
       </AuthProvider>
     </QueryClientProvider>
   );
@@ -38,5 +37,11 @@ function SessionTree({ session }: { session: SessionSnapshot }) {
 
 export function SessionApp() {
   const session = useSyncExternalStore(sessionStore.subscribe, sessionStore.getSnapshot);
-  return <SessionTree key={session.version} session={session} />;
+  // The toaster lives outside the per-session tree so a toast survives a token switch (e.g. after a password change).
+  return (
+    <>
+      <SessionTree key={session.version} session={session} />
+      <Toaster richColors position="bottom-right" />
+    </>
+  );
 }

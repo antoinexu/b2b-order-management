@@ -3,6 +3,7 @@ import type { UserRole } from '../db/schema';
 export const PERMISSIONS = [
   'users:read',
   'users:write',
+  'organization:write',
   'customers:read',
   'customers:write',
   'customers:delete',
@@ -17,18 +18,19 @@ export const PERMISSIONS = [
 
 export type Permission = (typeof PERMISSIONS)[number];
 
+const ADMIN_ONLY: ReadonlySet<Permission> = new Set(['users:write', 'organization:write']);
 const READ_ALL: Permission[] = ['customers:read', 'products:read', 'quotes:read', 'orders:read'];
 
 /**
  * Role-based access control matrix.
- * - admin:   full access, including user management
- * - manager: runs the business (pricing, catalog, order fulfilment), cannot manage users
+ * - admin:   full access, including user management and organization settings
+ * - manager: runs the business (pricing, catalog, order fulfilment), cannot manage users or settings
  * - sales:   manages customers, builds quotes, places orders
  * - viewer:  read-only access to business data
  */
 export const ROLE_PERMISSIONS: Record<UserRole, ReadonlySet<Permission>> = {
   admin: new Set(PERMISSIONS),
-  manager: new Set(PERMISSIONS.filter((p) => p !== 'users:write')),
+  manager: new Set(PERMISSIONS.filter((p) => !ADMIN_ONLY.has(p))),
   sales: new Set<Permission>([...READ_ALL, 'customers:write', 'quotes:write', 'orders:write']),
   viewer: new Set<Permission>(READ_ALL),
 };

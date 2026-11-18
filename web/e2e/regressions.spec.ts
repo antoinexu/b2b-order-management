@@ -172,3 +172,31 @@ test('an EUR quote keeps EUR throughout editing and saving', async ({ page, requ
   expect(saved.currency).toBe('EUR');
   expect(saved.totalCents).toBe(2000);
 });
+
+test('a draft whose validity date has passed can still be saved, and is blocked only when sent', async ({ page, request }) => {
+  const session = await register(request, 'PastDraft');
+  const buyer = await create(request, session, 'customers', { companyName: 'Past Buyer' });
+  const quote = await create(request, session, 'quotes', { customerId: buyer.id, validUntil: '2020-01-01',
+    items: [{ description: 'Old offer', quantity: 1, unitPriceCents: 1000 }] });
+  await openAs(page, session, `/quotes/${quote.id}/edit`);
+  await expect(page.getByText(/This date has passed/)).toBeVisible();
+  await page.getByLabel('Notes').fill('Only the notes changed');
+  const response = page.waitForResponse(response => response.request().method() === 'PATCH' && response.url().endsWith(`/quotes/${quote.id}`));
+  await page.getByRole('button', { name: 'Save changes' }).click();
+  expect((await response).status()).toBe(200);
+  await expect(page.getByText('Only the notes changed')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Mark as sent' }).click();
+  await expect(page.getByText(/validUntil is in the past/)).toBeVisible();
+});
+
+test('saving the organization time zone adopts the canonical spelling', async ({ page, request }) => {
+  const session = await register(request, 'ZoneCase');
+  await openAs(page, session, '/users');
+  const zone = page.getByLabel('Time zone');
+  await zone.fill('america/new_york');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByText('Saved. Quote validity now follows America/New_York time.')).toBeVisible();
+  await expect(zone).toHaveValue('America/New_York');
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
+});

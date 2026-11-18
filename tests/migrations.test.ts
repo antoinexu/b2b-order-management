@@ -26,11 +26,27 @@ it('upgrades an existing database without deleting users or reapplying migration
       'INSERT INTO users (organization_id, email, name, password_hash, role) VALUES ($1, $2, $3, $4, $5) RETURNING id',
       [org.rows[0]!.id, 'existing@example.com', 'Existing Admin', 'existing-hash', 'admin'],
     );
+    const customer = await client.query<{ id: string }>(
+      'INSERT INTO customers (organization_id, company_name) VALUES ($1, $2) RETURNING id', [org.rows[0]!.id, 'Existing Customer'],
+    );
+    const quote = await client.query<{ id: string }>(
+      `INSERT INTO quotes (organization_id, number, customer_id, status, created_by_id, created_at)
+       VALUES ($1, 'Q-000001', $2, 'sent', $3, '2026-01-02T03:04:05Z') RETURNING id`,
+      [org.rows[0]!.id, customer.rows[0]!.id, user.rows[0]!.id],
+    );
     await migrate(db, { migrationsFolder: MIGRATIONS_DIR });
     await migrate(db, { migrationsFolder: MIGRATIONS_DIR });
     const migrated = await db.select().from(schema.users);
     expect(migrated).toHaveLength(1);
-    expect(migrated[0]).toMatchObject({ id: user.rows[0]!.id, email: 'existing@example.com', role: 'admin', deletedAt: null });
+    expect(migrated[0]).toMatchObject({ id: user.rows[0]!.id, email: 'existing@example.com', role: 'admin', deletedAt: null, tokenVersion: 0 });
+    const [organization] = await db.select().from(schema.organizations);
+    expect(organization?.timezone).toBe('UTC');
+    // Existing quotes get exactly one backfilled creation entry, even though migrate ran twice.
+    const history = await db.select().from(schema.quoteStatusHistory);
+    expect(history).toEqual([expect.objectContaining({
+      quoteId: quote.rows[0]!.id, fromStatus: null, toStatus: 'draft', changedById: user.rows[0]!.id,
+      createdAt: new Date('2026-01-02T03:04:05Z'),
+    })]);
     const applied = await client.query('SELECT * FROM drizzle.__drizzle_migrations');
     expect(applied.rows).toHaveLength(journal.entries.length);
   } finally {

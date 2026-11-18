@@ -45,4 +45,19 @@ export function formatDate(value: string | null | undefined): string {
 
 export const formatDateTime = (value: string) => dateTimeFormatter.format(new Date(value));
 
+const dayFormatters = new Map<string, Intl.DateTimeFormat>();
+
+/** Current calendar date (YYYY-MM-DD) in an IANA time zone; matches the API's quote-validity rule. */
+export function todayIn(timeZone: string, now = new Date()): string {
+  let formatter = dayFormatters.get(timeZone);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' });
+    dayFormatters.set(timeZone, formatter);
+  }
+  return formatter.format(now);
+}
+
+/** The browser's IANA time zone, or UTC when the runtime can't tell. */
+export const browserTimeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+
 export const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);

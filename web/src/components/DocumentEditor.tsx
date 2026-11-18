@@ -2,13 +2,14 @@ import { Plus, Trash2 } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { errorMessage } from '@/api/client';
 import type { LineItemInput, Quote } from '@/api/types';
+import { useAuth } from '@/auth/AuthContext';
 import { CatalogPicker, CUSTOM_ITEM, type CatalogOption } from '@/components/CatalogPicker';
 import { FormField } from '@/components/FormField';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { centsToInput, formatMoney, parseMoneyToCents, parsePercentToBps } from '@/lib/format';
+import { centsToInput, formatMoney, parseMoneyToCents, parsePercentToBps, todayIn } from '@/lib/format';
 import { computeTotals, lineTotalCents, MAX_LINE_ITEMS, MAX_MONEY_CENTS, MAX_QUANTITY } from '@/lib/pricing';
 
 
@@ -54,6 +55,8 @@ function parseLine(line: LineDraft) {
 }
 
 export function DocumentEditor({ kind, initial, submitLabel, isSubmitting, error, onSubmit, onCancel }: Props) {
+  const { me } = useAuth();
+  const timeZone = me?.organization.timezone ?? 'UTC';
   const [customerId, setCustomerId] = useState(initial?.customerId ?? '');
   const [taxRate, setTaxRate] = useState(initial ? String(initial.taxRateBps / 100) : '0');
   const [validUntil, setValidUntil] = useState(initial?.validUntil ?? '');
@@ -122,8 +125,11 @@ export function DocumentEditor({ kind, initial, submitLabel, isSubmitting, error
             <CatalogPicker resource="customers" id="customer" label="Customer" value={customerId}
               selectedLabel={initial?.customerName} onChange={(option) => setCustomerId(option?.id ?? '')} />
           </FormField>
+          {/* No `min` on the date: like the API, a draft may keep a past date and is only blocked when sent. */}
           {kind === 'quote' ? (
-            <FormField id="validUntil" label="Valid until">
+            <FormField id="validUntil" label="Valid until" hint={validUntil && validUntil < todayIn(timeZone)
+              ? `This date has passed in ${timeZone}. You can save the draft, but update the date before sending.`
+              : `Through the end of this day, ${timeZone} time.`}>
               <Input id="validUntil" type="date" value={validUntil} onChange={(e) => setValidUntil(e.target.value)} />
             </FormField>
           ) : (

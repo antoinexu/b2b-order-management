@@ -12,13 +12,15 @@ export type Quote = Schemas['Quote'];
 export type QuoteSummary = Schemas['QuoteSummary'];
 export type Order = Schemas['Order'];
 export type OrderSummary = Schemas['OrderSummary'];
+export type QuoteStatusChange = Schemas['QuoteStatusChange'];
+export type Organization = Schemas['Organization'];
 
 export type UserRole = User['role'];
 export type QuoteStatus = Quote['status'];
 export type OrderStatus = Order['status'];
 
 export type Permission =
-  | 'users:read' | 'users:write'
+  | 'users:read' | 'users:write' | 'organization:write'
   | 'customers:read' | 'customers:write' | 'customers:delete'
   | 'products:read' | 'products:write'
   | 'quotes:read' | 'quotes:write'

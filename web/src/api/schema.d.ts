@@ -138,6 +138,82 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/change-password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Change your password. Signs out every other session and returns a fresh token */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ChangePasswordRequest"];
+                };
+            };
+            responses: {
+                /** @description Success */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AuthResponse"];
+                    };
+                };
+                /** @description Validation error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Missing or invalid token */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Insufficient permissions */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Conflict or invalid state transition */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/me": {
         parameters: {
             query?: never;
@@ -913,6 +989,85 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/organization": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update the organization's name or time zone
+         * @description Requires permission: `organization:write`
+         */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["UpdateOrganizationRequest"];
+                };
+            };
+            responses: {
+                /** @description Success */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Organization"];
+                    };
+                };
+                /** @description Validation error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Missing or invalid token */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Insufficient permissions */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Conflict or invalid state transition */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        trace?: never;
+    };
     "/products": {
         parameters: {
             query?: never;
@@ -1298,7 +1453,7 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List quotes (filter by status or customer). Sent quotes past validUntil are reported as expired
+         * List quotes (filter by status or customer). Sent quotes past validUntil (in the organization's time zone) are reported as expired
          * @description Requires permission: `quotes:read`
          */
         get: {
@@ -2355,20 +2510,32 @@ export interface components {
             /** Format: email */
             email: string;
             password: string;
+            /**
+             * @description IANA time zone; quote validity dates end at midnight in this zone
+             * @default UTC
+             * @example America/New_York
+             */
+            timezone: string;
         };
         LoginRequest: {
             /** Format: email */
             email: string;
             password: string;
         };
+        ChangePasswordRequest: {
+            currentPassword: string;
+            newPassword: string;
+        };
         MeResponse: {
             user: components["schemas"]["User"];
-            organization: {
-                /** Format: uuid */
-                id: string;
-                name: string;
-            };
+            organization: components["schemas"]["Organization"];
             permissions: string[];
+        };
+        Organization: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            timezone: string;
         };
         Customer: {
             /** Format: uuid */
@@ -2496,6 +2663,15 @@ export interface components {
             status: "pending" | "confirmed" | "shipped" | "delivered" | "cancelled";
             note?: string;
         };
+        /** @description At least one recognized update field is required. */
+        UpdateOrganizationRequest: {
+            name?: string;
+            /**
+             * @description IANA time zone; quote validity dates end at midnight in this zone
+             * @example America/New_York
+             */
+            timezone?: string;
+        };
         Product: {
             /** Format: uuid */
             id: string;
@@ -2549,6 +2725,19 @@ export interface components {
         };
         Quote: components["schemas"]["QuoteSummary"] & {
             items: components["schemas"]["LineItem"][];
+            /** @description Recorded status changes, oldest first. Lazy expiry (a sent quote passing validUntil) is not recorded here. */
+            history: components["schemas"]["QuoteStatusChange"][];
+        };
+        QuoteStatusChange: {
+            /** @enum {string|null} */
+            fromStatus: "draft" | "sent" | "accepted" | "rejected" | "expired" | null;
+            /** @enum {string} */
+            toStatus: "draft" | "sent" | "accepted" | "rejected" | "expired";
+            /** Format: uuid */
+            changedById: string;
+            changedByName: string;
+            /** Format: date-time */
+            createdAt: string;
         };
         CreateQuoteRequest: {
             /** Format: uuid */

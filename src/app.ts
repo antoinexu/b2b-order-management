@@ -13,6 +13,7 @@ import { errorHandler, notFoundHandler } from './middleware/error';
 import { authRouter } from './modules/auth';
 import { customersRouter } from './modules/customers';
 import { ordersRouter } from './modules/orders';
+import { organizationRouter } from './modules/organization';
 import { productsRouter } from './modules/products';
 import { quotesRouter } from './modules/quotes';
 import { usersRouter } from './modules/users';
@@ -47,6 +48,7 @@ export function createApp({ db, config }: { db: DB; config: Config }) {
   const requireAuth = authenticate(db, config.JWT_SECRET);
   const api = Router();
   api.use('/auth', authRouter(db, config, requireAuth));
+  api.use('/organization', requireAuth, organizationRouter(db));
   api.use('/users', requireAuth, usersRouter(db));
   api.use('/customers', requireAuth, customersRouter(db));
   api.use('/products', requireAuth, productsRouter(db));

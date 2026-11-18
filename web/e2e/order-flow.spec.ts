@@ -44,6 +44,11 @@ test('sales quotes a customer, converts it, and a manager fulfils the order', as
   await expect(page.getByText('Sent', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Accepted' }).click();
   await expect(page.getByText('Accepted', { exact: true })).toBeVisible();
+  // Every transition is audited with who made it.
+  for (const step of ['Created', 'Marked as sent', 'Marked as accepted']) {
+    await expect(page.getByText(step, { exact: true })).toBeVisible();
+  }
+  await expect(page.getByText(/by Demo Sales/)).toHaveCount(3);
 
   await page.getByRole('button', { name: 'Convert to order' }).click();
   await page.getByLabel('Customer PO number (optional)').fill('PO-E2E-1');
@@ -114,4 +119,36 @@ test('expired sessions return to the login page', async ({ page }) => {
   await page.evaluate(() => localStorage.setItem('b2b.token', 'tampered.token.value'));
   await page.goto('/customers');
   await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
+});
+
+test('changing the password keeps this session and retires the old password', async ({ page }) => {
+  const email = `pat.${Date.now()}@password.example`;
+  await page.goto('/register');
+  await page.getByLabel('Company name').fill('Password Co');
+  await page.getByLabel('Your name').fill('Pat Owner');
+  await page.getByLabel('Work email').fill(email);
+  await page.getByLabel('Password').fill('Password123!');
+  await page.getByRole('button', { name: 'Create organization' }).click();
+  await expect(page.getByRole('heading', { name: 'Welcome back, Pat' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Change password' }).click();
+  await page.getByLabel('Current password').fill('wrong-password');
+  await page.getByLabel('New password', { exact: true }).fill('NewPassword456!');
+  await page.getByLabel('Confirm new password').fill('NewPassword456!');
+  await page.getByRole('dialog').getByRole('button', { name: 'Change password' }).click();
+  await expect(page.getByRole('alert')).toHaveText('Current password is incorrect');
+
+  await page.getByLabel('Current password').fill('Password123!');
+  await page.getByRole('dialog').getByRole('button', { name: 'Change password' }).click();
+  await expect(page.getByText('Password changed. Other sessions were signed out.')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Welcome back, Pat' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Sign out' }).click();
+  await page.getByLabel('Email').fill(email);
+  await page.getByLabel('Password').fill('Password123!');
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('Invalid email or password');
+  await page.getByLabel('Password').fill('NewPassword456!');
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Welcome back, Pat' })).toBeVisible();
 });

@@ -20,6 +20,8 @@ const timestamps = {
 export const organizations = pgTable('organizations', {
   id: uuid('id').primaryKey().defaultRandom(),
   name: text('name').notNull(),
+  /** IANA time zone; quote validity dates end at midnight in this zone. */
+  timezone: text('timezone').notNull().default('UTC'),
   quoteSeq: integer('quote_seq').notNull().default(0),
   orderSeq: integer('order_seq').notNull().default(0),
   ...timestamps,
@@ -32,6 +34,8 @@ export const users = pgTable('users', {
   name: text('name').notNull(),
   passwordHash: text('password_hash').notNull(),
   role: userRole('role').notNull().default('viewer'),
+  /** Embedded in each JWT; incrementing it revokes every token issued before. */
+  tokenVersion: integer('token_version').notNull().default(0),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
   ...timestamps,
 }, (t) => [uniqueIndex('users_email_uq').on(t.email)]);
@@ -96,6 +100,15 @@ export const quoteItems = pgTable('quote_items', {
   position: integer('position').notNull(),
 });
 
+export const quoteStatusHistory = pgTable('quote_status_history', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  quoteId: uuid('quote_id').notNull().references(() => quotes.id, { onDelete: 'cascade' }),
+  fromStatus: quoteStatus('from_status'),
+  toStatus: quoteStatus('to_status').notNull(),
+  changedById: uuid('changed_by_id').notNull().references(() => users.id),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [index('quote_status_history_quote_idx').on(t.quoteId)]);
+
 export const orders = pgTable('orders', {
   id: uuid('id').primaryKey().defaultRandom(),
   organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
@@ -142,10 +155,15 @@ export const orderStatusHistory = pgTable('order_status_history', {
 
 export const quotesRelations = relations(quotes, ({ many, one }) => ({
   items: many(quoteItems),
+  history: many(quoteStatusHistory),
   customer: one(customers, { fields: [quotes.customerId], references: [customers.id] }),
 }));
 export const quoteItemsRelations = relations(quoteItems, ({ one }) => ({
   quote: one(quotes, { fields: [quoteItems.quoteId], references: [quotes.id] }),
+}));
+export const quoteStatusHistoryRelations = relations(quoteStatusHistory, ({ one }) => ({
+  quote: one(quotes, { fields: [quoteStatusHistory.quoteId], references: [quotes.id] }),
+  changedBy: one(users, { fields: [quoteStatusHistory.changedById], references: [users.id] }),
 }));
 export const ordersRelations = relations(orders, ({ many, one }) => ({
   items: many(orderItems),

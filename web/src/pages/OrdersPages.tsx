@@ -15,12 +15,12 @@ import { Pagination } from '@/components/Pagination';
 import { EmptyState, ErrorState, TableSkeleton } from '@/components/States';
 import { StatusBadge } from '@/components/StatusBadge';
 import { StatusFilter } from '@/components/StatusFilter';
+import { StatusTimeline } from '@/components/StatusTimeline';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { capitalize, formatDate, formatDateTime, formatMoney } from '@/lib/format';
-import { cn } from '@/lib/utils';
+import { capitalize, formatDate, formatMoney } from '@/lib/format';
 
 const PAGE_SIZE = 20;
 
@@ -192,17 +192,7 @@ export function OrderDetailPage() {
           <Card>
             <CardHeader><CardTitle>History</CardTitle></CardHeader>
             <CardContent>
-              <ol className="relative grid gap-4 border-l pl-5">
-                {o.history.map((h, i) => (
-                  <li key={i} className="relative">
-                    <span className={cn('absolute top-1.5 -left-[25px] size-2.5 rounded-full border-2 border-background',
-                      i === o.history.length - 1 ? 'bg-primary' : 'bg-muted-foreground/40')} aria-hidden />
-                    <p className="text-sm font-medium">{capitalize(h.toStatus)}</p>
-                    <p className="text-xs text-muted-foreground">{formatDateTime(h.createdAt)}</p>
-                    {h.note && <p className="mt-1 text-sm">{h.note}</p>}
-                  </li>
-                ))}
-              </ol>
+              <StatusTimeline entries={o.history.map((h) => ({ label: capitalize(h.toStatus), at: h.createdAt, detail: h.note }))} />
             </CardContent>
           </Card>
         </div>

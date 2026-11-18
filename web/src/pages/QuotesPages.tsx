@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { toast } from 'sonner';
 import { unwrap } from '@/api/client';
-import { QUOTE_STATUSES, type QuoteStatus } from '@/api/types';
+import { QUOTE_STATUSES, type Quote, type QuoteStatus } from '@/api/types';
 import { useAuth } from '@/auth/AuthContext';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { Detail } from '@/components/Detail';
@@ -15,8 +15,9 @@ import { Pagination } from '@/components/Pagination';
 import { EmptyState, ErrorState, TableSkeleton } from '@/components/States';
 import { StatusBadge } from '@/components/StatusBadge';
 import { StatusFilter } from '@/components/StatusFilter';
+import { StatusTimeline, type TimelineEntry } from '@/components/StatusTimeline';
 import { Button, buttonVariants } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
@@ -151,11 +152,28 @@ export function QuoteEditPage() {
   );
 }
 
+const HISTORY_LABELS: Record<QuoteStatus, string> = {
+  draft: 'Created',
+  sent: 'Marked as sent',
+  accepted: 'Marked as accepted',
+  rejected: 'Marked as rejected',
+  expired: 'Expired at acceptance',
+};
+
+/** Recorded changes plus, for a sent quote that lapsed on its own, the derived expiry (never stored as an event). */
+function quoteTimeline(q: Quote, timeZone: string): TimelineEntry[] {
+  const entries: TimelineEntry[] = q.history.map((h) => ({ label: HISTORY_LABELS[h.toStatus], at: h.createdAt, by: h.changedByName }));
+  if (q.status === 'expired' && q.history.at(-1)?.toStatus !== 'expired') {
+    entries.push({ label: 'Validity ended', detail: `End of ${formatDate(q.validUntil)} (${timeZone})` });
+  }
+  return entries;
+}
+
 export function QuoteDetailPage() {
   const { id = '' } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { api, can } = useAuth();
+  const { api, can, me } = useAuth();
   const quote = useQuote(id);
   const [converting, setConverting] = useState(false);
 
@@ -211,14 +229,22 @@ export function QuoteDetailPage() {
 
       <div className="grid gap-6 lg:grid-cols-[1fr_16rem]">
         <LineItemsTable items={q.items} currency={q.currency} subtotalCents={q.subtotalCents} taxCents={q.taxCents} taxRateBps={q.taxRateBps} totalCents={q.totalCents} />
-        <Card>
-          <CardContent className="grid gap-3 text-sm">
-            <Detail label="Valid until" value={formatDate(q.validUntil)} />
-            <Detail label="Currency" value={q.currency} />
-            <Detail label="Last updated" value={formatDate(q.updatedAt)} />
-            {q.notes && <Detail label="Notes" value={<span className="whitespace-pre-wrap">{q.notes}</span>} />}
-          </CardContent>
-        </Card>
+        <div className="grid content-start gap-6">
+          <Card>
+            <CardContent className="grid gap-3 text-sm">
+              <Detail label="Valid until" value={formatDate(q.validUntil)} />
+              <Detail label="Currency" value={q.currency} />
+              <Detail label="Last updated" value={formatDate(q.updatedAt)} />
+              {q.notes && <Detail label="Notes" value={<span className="whitespace-pre-wrap">{q.notes}</span>} />}
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader><CardTitle>History</CardTitle></CardHeader>
+            <CardContent>
+              <StatusTimeline entries={quoteTimeline(q, me?.organization.timezone ?? 'UTC')} />
+            </CardContent>
+          </Card>
+        </div>
       </div>
 
       {converting && <ConvertDialog quoteId={id} onClose={() => setConverting(false)} />}

@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm';
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import type { DB } from '../db/client';
-import { users, type UserRole } from '../db/schema';
+import { organizations, users, type UserRole } from '../db/schema';
 import { forbidden, unauthorized } from '../lib/errors';
 import { hasPermission, type Permission } from '../lib/permissions';
 
@@ -10,6 +10,8 @@ export interface AuthContext {
   userId: string;
   organizationId: string;
   role: UserRole;
+  /** The organization's IANA time zone. */
+  timezone: string;
 }
 
 declare global {
@@ -24,16 +26,22 @@ declare global {
 interface TokenPayload {
   sub: string;
   org: string;
+  /** User's token version at signing; tokens issued before this field existed count as version 0. */
+  ver?: number;
 }
 
-export function signToken(user: { id: string; organizationId: string }, secret: string, expiresIn: string): string {
-  const payload: TokenPayload = { sub: user.id, org: user.organizationId };
+export function signToken(
+  user: { id: string; organizationId: string; tokenVersion: number },
+  secret: string,
+  expiresIn: string,
+): string {
+  const payload: TokenPayload = { sub: user.id, org: user.organizationId, ver: user.tokenVersion };
   return jwt.sign(payload, secret, { algorithm: 'HS256', expiresIn: expiresIn as jwt.SignOptions['expiresIn'] });
 }
 
 /**
  * Verifies the bearer token and loads the user's *current* role from the database,
- * so role changes and user removal take effect immediately rather than at token expiry.
+ * so role changes, user removal and password changes take effect immediately rather than at token expiry.
  */
 export function authenticate(db: DB, secret: string): RequestHandler {
   return async (req: Request, _res: Response, next: NextFunction) => {
@@ -49,13 +57,22 @@ export function authenticate(db: DB, secret: string): RequestHandler {
     }
 
     const [user] = await db
-      .select({ id: users.id, organizationId: users.organizationId, role: users.role, deletedAt: users.deletedAt })
+      .select({
+        id: users.id,
+        organizationId: users.organizationId,
+        role: users.role,
+        deletedAt: users.deletedAt,
+        tokenVersion: users.tokenVersion,
+        timezone: organizations.timezone,
+      })
       .from(users)
+      .innerJoin(organizations, eq(organizations.id, users.organizationId))
       .where(eq(users.id, payload.sub))
       .limit(1);
     if (!user || user.deletedAt || user.organizationId !== payload.org) throw unauthorized('User no longer exists');
+    if ((payload.ver ?? 0) !== user.tokenVersion) throw unauthorized('Session has been revoked; please sign in again');
 
-    req.auth = { userId: user.id, organizationId: user.organizationId, role: user.role };
+    req.auth = { userId: user.id, organizationId: user.organizationId, role: user.role, timezone: user.timezone };
     next();
   };
 }

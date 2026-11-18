@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { browserTimeZone } from '@/lib/format';
 
 const DEMO_ACCOUNTS = ['admin', 'manager', 'sales', 'viewer'] as const;
 const SHOW_DEMO = import.meta.env.VITE_SHOW_DEMO_ACCOUNTS !== 'false';
@@ -96,8 +97,9 @@ export function LoginPage() {
 export function RegisterPage() {
   const { api, signIn } = useAuth();
   const [form, setForm] = useState({ organizationName: '', name: '', email: '', password: '' });
+  const [timezone] = useState(browserTimeZone);
   const register = useMutation({
-    mutationFn: () => unwrap(api.POST('/auth/register', { body: form })),
+    mutationFn: () => unwrap(api.POST('/auth/register', { body: { ...form, timezone } })),
     onSuccess: (data) => signIn(data.token),
     meta: { inlineError: true },
   });
@@ -114,6 +116,7 @@ export function RegisterPage() {
         <Field id="name" label="Your name" autoComplete="name" value={form.name} onChange={set('name')} />
         <Field id="email" label="Work email" type="email" autoComplete="email" value={form.email} onChange={set('email')} />
         <Field id="password" label="Password" type="password" autoComplete="new-password" minLength={8} value={form.password} onChange={set('password')} />
+        <p className="text-xs text-muted-foreground">Time zone: {timezone}. Admins can change it later on the Team page.</p>
         <FormError error={register.error} />
         <Button type="submit" disabled={register.isPending}>{register.isPending ? 'Creating…' : 'Create organization'}</Button>
       </form>

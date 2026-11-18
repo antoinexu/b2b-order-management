@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatBps, formatDate, formatMoney, parseMoneyToCents, parsePercentToBps } from './format';
+import { formatBps, formatDate, formatMoney, parseMoneyToCents, parsePercentToBps, todayIn } from './format';
 import { computeTotals, lineTotalCents, MAX_MONEY_CENTS, MAX_QUANTITY } from './pricing';
 
 describe('money parsing and formatting', () => {
@@ -77,5 +77,14 @@ describe('client price preview matches the server', () => {
     expect(computeTotals([1_500_000_000, 1_500_000_000], 0)).toBeNull();
     expect(computeTotals([2_000_000_000], 1000)).toBeNull();
     expect(computeTotals([1], 10_001)).toBeNull();
+  });
+});
+
+describe('todayIn', () => {
+  it("returns the calendar date in the organization's time zone", () => {
+    const instant = new Date('2026-03-01T02:30:00Z');
+    expect(todayIn('UTC', instant)).toBe('2026-03-01');
+    expect(todayIn('America/Los_Angeles', instant)).toBe('2026-02-28');
+    expect(todayIn('Asia/Shanghai', instant)).toBe('2026-03-01');
   });
 });
