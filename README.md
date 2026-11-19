@@ -32,6 +32,9 @@ Sign in with one click as **Admin**, **Manager**, **Sales** or **Viewer** to see
 - **Multi-tenancy:** each organization's data is fully isolated; cross-tenant access returns `404`.
 - **Authentication:** register an organization, log in with email/password (scrypt hashes), JWT bearer tokens.
   Users can change their password; doing so revokes every previously issued token (per-user token version).
+- **Team invitations & password reset by email:** admins invite teammates by email, and each invitee chooses their
+  own password through a single-use link (valid for 7 days). Forgotten passwords are reset through a single-use link
+  (valid for 60 minutes) that also signs out every other session. Only SHA-256 hashes of link tokens are stored.
 - **RBAC:** four roles with a permission matrix. Role changes and user removal take effect immediately, without waiting for the token to expire.
 - **Customers & products:** CRUD, search, pagination, per-tenant unique SKUs.
 - **Quotes:** draft → sent → accepted / rejected / expired, line-item discounts, tax, sequential numbers (`Q-000001`).
@@ -97,6 +100,10 @@ npm run db:seed               # optional demo data
 ```
 
 Local commands load `.env` automatically; variables already set in the shell or container take priority.
+
+In development, emails (invitations, password resets) are not sent: they are printed to the API log, links included
+(`MAIL_TRANSPORT=log`). To send real email, set `RESEND_API_KEY` from [Resend](https://resend.com) and `MAIL_FROM`
+to a sender on a domain verified there.
 The application requires Node.js 22 or later.
 
 Demo users created by the seed script (password `Password123!`):
@@ -109,6 +116,9 @@ The API is ready to deploy to [Render](https://render.com) (Docker web service) 
 1. Create a Neon project and copy its connection string.
 2. In Render, choose **New → Blueprint** and select this repository. [`render.yaml`](render.yaml) defines the service.
 3. Paste the Neon connection string as `DATABASE_URL`. Render generates `JWT_SECRET` automatically.
+4. Optional, for invitations and password resets: set `RESEND_API_KEY`, `MAIL_FROM` (a sender on a domain verified
+   in Resend) and `APP_URL` (the web app's public URL, which emailed links point to). Without them, the API runs with
+   email disabled: admins add teammates with an initial password instead, and password reset is unavailable.
 
 Migrations run on startup. Once connected, Render redeploys after CI passes on `main`.
 On the free plan the instance sleeps when idle, so the first request after a while can take about a minute.
@@ -162,8 +172,9 @@ All endpoints are under `/api/v1`. Full request and response schemas are in Swag
 | Area | Endpoints |
 | --- | --- |
 | Auth | `POST /auth/register`, `POST /auth/login`, `POST /auth/change-password`, `GET /auth/me` |
+| Email links | `POST /auth/forgot-password`, `POST /auth/reset-password`, `POST /auth/invitations/lookup`, `POST /auth/invitations/accept` |
 | Organization | `PATCH /organization` (name, time zone, discount limit, base currency) |
-| Users | `GET/POST /users`, `PATCH/DELETE /users/{id}` |
+| Users | `GET/POST /users`, `PATCH/DELETE /users/{id}`, `POST /users/{id}/resend-invitation` |
 | Customers | `GET/POST /customers`, `GET/PATCH/DELETE /customers/{id}` |
 | Products | `GET/POST /products`, `GET/PATCH/DELETE /products/{id}` |
 | Quotes | `GET/POST /quotes`, `GET/PATCH/DELETE /quotes/{id}`, `POST /quotes/{id}/send`, `/accept`, `/reject`, `/convert` |
@@ -177,6 +188,11 @@ Errors share one shape:
 
 Customer, product and user PATCH requests must contain at least one recognized update field; empty or
 unknown-only objects return `400 VALIDATION_ERROR`.
+
+`POST /users` emails an invitation unless the request includes a `password`, in which case the account is active at
+once. An invited user is listed with `status: "invited"` and cannot sign in until they accept. Invited admins don't
+count toward the "at least one active admin" rule. If the invitation email can't be sent, nothing is saved (`502`).
+Deleting an invited user cancels the invitation outright, so the same email can be invited again.
 
 `DELETE /users/{id}` deactivates the account: old tokens and password login stop working, and the user
 is hidden from user lists. Quotes, orders and status history keep their author references. Deactivated
@@ -232,6 +248,11 @@ web/                   React frontend (see web/README.md)
 - **Account removal preserves history.** A nullable `deleted_at` timestamp disables access without deleting users referenced by business records. Startup applies the additive migration to existing databases.
 - **Credential-safe logging.** Request logs remove authorization and cookie headers, including response cookies.
 - **Brute-force protection.** Login and registration are rate limited per IP (`429 RATE_LIMITED`). Only failed logins count toward the limit. Unknown emails still go through scrypt, so response time doesn't reveal which accounts exist. The limiter keeps its counts in memory; with several instances it would need a shared store such as Redis.
+- **Email links that leak nothing.** `POST /auth/forgot-password` answers `202` with the same message for every
+  address and does the lookup and sending after the response, so neither the reply nor its timing reveals whether an
+  account exists. Link tokens are 256-bit random values; only their SHA-256 hash is stored, each use deletes the row
+  (so a link works exactly once, even under concurrent requests), and issuing a new link replaces the old one. Tokens
+  travel in the URL fragment (`#token=…`), which browsers never send to servers or in `Referer` headers.
 - **Honest health checks.** `/health` returns `503` when the database is unreachable, so container orchestrators and load balancers take the instance out of rotation.
 - **Prices copied onto line items.** Each line item stores its own description and unit price, so a quote or order reads the same forever.
 - **The tenant comes from the server, never the client.** The organization is resolved from the authenticated user on every request and added to every query.
@@ -247,7 +268,8 @@ web/                   React frontend (see web/README.md)
       draft quote for a person to review before sending.
 - [ ] Audit log of all write operations (quote and order status changes are already recorded)
 - [ ] PDF export for quotes and orders
-- [ ] Refresh tokens and password reset by email (signed-in password change is done)
+- [ ] Refresh tokens
+- [x] Team invitations and password reset by email
 - [x] Frontend (React web app)
 
 ## License

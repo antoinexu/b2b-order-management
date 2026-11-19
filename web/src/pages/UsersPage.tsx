@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { toast } from 'sonner';
-import { errorMessage, unwrap } from '@/api/client';
+import { ApiError, errorMessage, unwrap } from '@/api/client';
 import { USER_ROLES, type User, type UserRole } from '@/api/types';
 import { useAuth } from '@/auth/AuthContext';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
@@ -55,7 +55,11 @@ export function UsersPage() {
   });
   const deactivate = useMutation({
     mutationFn: (user: User) => unwrap(api.DELETE('/users/{id}', { params: { path: { id: user.id } } })),
-    onSuccess: (_d, user) => { refresh(); toast.success(`${user.name} was deactivated`); },
+    onSuccess: (_d, user) => { refresh(); toast.success(user.status === 'invited' ? `Invitation for ${user.email} cancelled` : `${user.name} was deactivated`); },
+  });
+  const resend = useMutation({
+    mutationFn: (user: User) => unwrap(api.POST('/users/{id}/resend-invitation', { params: { path: { id: user.id } } })),
+    onSuccess: (u) => toast.success(`New invitation sent to ${u.email}. Earlier links no longer work.`),
   });
 
   return (
@@ -63,7 +67,7 @@ export function UsersPage() {
       <PageHeader
         title="Team"
         description="People in your organization and what they can do."
-        actions={canWrite && <Button onClick={() => setInviting(true)}><Plus /> Add member</Button>}
+        actions={canWrite && <Button onClick={() => setInviting(true)}><Plus /> Invite member</Button>}
       />
       {users.isPending ? <TableSkeleton /> : users.isError ? <ErrorState error={users.error} onRetry={() => users.refetch()} /> : (
         <div className="rounded-lg border">
@@ -89,19 +93,36 @@ export function UsersPage() {
                         ? <RoleSelect value={u.role} disabled={changeRole.isPending} onChange={(role) => changeRole.mutate({ id: u.id, role })} />
                         : <Badge variant="outline">{capitalize(u.role)}</Badge>}
                     </TableCell>
-                    <TableCell className="hidden md:table-cell">{formatDate(u.createdAt)}</TableCell>
+                    <TableCell className="hidden md:table-cell">
+                      {u.status === 'invited' ? <Badge variant="secondary">Invited</Badge> : formatDate(u.createdAt)}
+                    </TableCell>
                     {canWrite && (
                       <TableCell>
-                        {!isSelf && (
-                          <ConfirmDialog
-                            trigger={<Button variant="ghost" size="sm">Deactivate</Button>}
-                            title={`Deactivate ${u.name}?`}
-                            description="They lose access immediately. Their quotes, orders and history are kept."
-                            confirmLabel="Deactivate"
-                            destructive
-                            onConfirm={() => deactivate.mutate(u)}
-                          />
-                        )}
+                        <div className="flex justify-end gap-1">
+                          {u.status === 'invited' && (
+                            <Button variant="ghost" size="sm" disabled={resend.isPending} aria-label={`Resend invitation to ${u.email}`}
+                              onClick={() => resend.mutate(u)}>Resend invite</Button>
+                          )}
+                          {!isSelf && (u.status === 'invited' ? (
+                            <ConfirmDialog
+                              trigger={<Button variant="ghost" size="sm" aria-label={`Cancel invitation for ${u.email}`}>Cancel invite</Button>}
+                              title={`Cancel the invitation for ${u.email}?`}
+                              description="Their invitation link stops working right away."
+                              confirmLabel="Cancel invitation"
+                              destructive
+                              onConfirm={() => deactivate.mutate(u)}
+                            />
+                          ) : (
+                            <ConfirmDialog
+                              trigger={<Button variant="ghost" size="sm">Deactivate</Button>}
+                              title={`Deactivate ${u.name}?`}
+                              description="They lose access immediately. Their quotes, orders and history are kept."
+                              confirmLabel="Deactivate"
+                              destructive
+                              onConfirm={() => deactivate.mutate(u)}
+                            />
+                          ))}
+                        </div>
                       </TableCell>
                     )}
                   </TableRow>
@@ -217,16 +238,23 @@ function OrganizationSettings() {
 function InviteDialog({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
   const { api } = useAuth();
   const [form, setForm] = useState({ name: '', email: '', password: '', role: 'sales' as UserRole });
+  // Emailing an invitation is the default; an initial password is the fallback when email isn't available.
+  const [withPassword, setWithPassword] = useState(false);
   const create = useMutation({
-    mutationFn: () => unwrap(api.POST('/users', { body: form })),
-    onSuccess: (u) => { onDone(); toast.success(`${u.name} added`); onClose(); },
+    mutationFn: () => unwrap(api.POST('/users', { body: { ...form, password: withPassword ? form.password : undefined } })),
+    onSuccess: (u) => {
+      onDone();
+      toast.success(u.status === 'invited' ? `Invitation sent to ${u.email}` : `${u.name} added. Share their password with them securely.`);
+      onClose();
+    },
     meta: { inlineError: true },
   });
+  const emailUnavailable = create.error instanceof ApiError && create.error.code === 'EMAIL_UNAVAILABLE';
   const submit = (e: FormEvent) => { e.preventDefault(); create.mutate(); };
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent>
-        <DialogHeader><DialogTitle>Add team member</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle>Invite team member</DialogTitle></DialogHeader>
         <form id="invite-form" className="grid gap-4" onSubmit={submit}>
           <FormField id="invite-name" label="Name">
             <Input id="invite-name" required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} autoFocus />
@@ -234,18 +262,31 @@ function InviteDialog({ onClose, onDone }: { onClose: () => void; onDone: () => 
           <FormField id="invite-email" label="Email">
             <Input id="invite-email" type="email" required value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
           </FormField>
-          <FormField id="invite-password" label="Temporary password" hint="At least 8 characters. Share it with them securely.">
-            <Input id="invite-password" type="password" required minLength={8} autoComplete="new-password" value={form.password}
-              onChange={(e) => setForm({ ...form, password: e.target.value })} />
-          </FormField>
+          {withPassword ? (
+            <FormField id="invite-password" label="Initial password" hint="At least 8 characters. Share it with them securely.">
+              <Input id="invite-password" type="password" required minLength={8} autoComplete="new-password" value={form.password}
+                onChange={(e) => setForm({ ...form, password: e.target.value })} />
+            </FormField>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              We'll email them a link to choose their own password. It expires in 7 days.
+            </p>
+          )}
           <FormField id="invite-role" label="Role" hint={ROLE_DESCRIPTIONS[form.role]}>
             <RoleSelect id="invite-role" value={form.role} onChange={(role) => setForm({ ...form, role })} />
           </FormField>
         </form>
         {create.error && <p role="alert" className="text-sm text-destructive">{errorMessage(create.error)}</p>}
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button type="submit" form="invite-form" disabled={create.isPending}>{create.isPending ? 'Adding…' : 'Add member'}</Button>
+        <DialogFooter className="sm:justify-between">
+          <Button variant="link" className="px-0" onClick={() => { setWithPassword(!withPassword); create.reset(); }}>
+            {withPassword ? 'Email an invitation instead' : emailUnavailable ? 'Set an initial password' : 'Set a password instead'}
+          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={onClose}>Cancel</Button>
+            <Button type="submit" form="invite-form" disabled={create.isPending}>
+              {create.isPending ? (withPassword ? 'Adding…' : 'Sending…') : withPassword ? 'Add member' : 'Send invitation'}
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

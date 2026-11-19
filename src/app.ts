@@ -8,6 +8,7 @@ import type { Config } from './config';
 import type { DB } from './db/client';
 import { buildOpenApiDocument } from './lib/openapi';
 import { createLogger } from './lib/logger';
+import { createMailer, type Mailer } from './lib/mailer';
 import { authenticate } from './middleware/auth';
 import { errorHandler, notFoundHandler } from './middleware/error';
 import { authRouter } from './modules/auth';
@@ -18,9 +19,11 @@ import { productsRouter } from './modules/products';
 import { quotesRouter } from './modules/quotes';
 import { usersRouter } from './modules/users';
 
-export function createApp({ db, config }: { db: DB; config: Config }) {
+export function createApp({ db, config, mailer: providedMailer }: { db: DB; config: Config; mailer?: Mailer }) {
   const app = express();
   const logger = createLogger(config);
+  const mailer = providedMailer ?? createMailer(config, logger);
+  if (!mailer.enabled) logger.warn('Email is not configured (MAIL_TRANSPORT=none): invitations and password resets are unavailable');
 
   app.disable('x-powered-by');
   // Behind a load balancer, trust its X-Forwarded-For so rate limiting sees real client IPs.
@@ -47,9 +50,9 @@ export function createApp({ db, config }: { db: DB; config: Config }) {
 
   const requireAuth = authenticate(db, config.JWT_SECRET);
   const api = Router();
-  api.use('/auth', authRouter(db, config, requireAuth));
+  api.use('/auth', authRouter(db, config, requireAuth, mailer));
   api.use('/organization', requireAuth, organizationRouter(db));
-  api.use('/users', requireAuth, usersRouter(db));
+  api.use('/users', requireAuth, usersRouter(db, config, mailer));
   api.use('/customers', requireAuth, customersRouter(db));
   api.use('/products', requireAuth, productsRouter(db));
   api.use('/quotes', requireAuth, quotesRouter(db));

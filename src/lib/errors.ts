@@ -17,6 +17,12 @@ export const forbidden = (message = 'You do not have permission to perform this 
 export const notFound = (resource: string) => new AppError(404, 'NOT_FOUND', `${resource} not found`);
 export const conflict = (message: string) => new AppError(409, 'CONFLICT', message);
 export const invalidState = (message: string) => new AppError(409, 'INVALID_STATE', message);
+export const invalidLink = () =>
+  new AppError(400, 'INVALID_LINK', 'This link is invalid, has expired or was already used. Ask for a new one.');
+export const emailUnavailable = (consequence: string) =>
+  new AppError(503, 'EMAIL_UNAVAILABLE', `Email is not configured on this server, so ${consequence}`);
+export const emailFailed = () =>
+  new AppError(502, 'EMAIL_FAILED', 'The email could not be sent, so nothing was saved. Please try again.');
 
 /** Extracts a Postgres SQLSTATE code from driver errors (node-postgres, PGlite, or Drizzle-wrapped). */
 export function pgErrorCode(err: unknown): string | undefined {

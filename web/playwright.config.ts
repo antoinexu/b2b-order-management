@@ -1,6 +1,6 @@
 import { defineConfig, devices } from '@playwright/test';
+import { apiPort, OUTBOX_DIR } from './e2e/outbox';
 
-const apiPort = Number(process.env.E2E_API_PORT ?? 43001);
 const webPort = Number(process.env.E2E_WEB_PORT ?? 45173);
 if (![apiPort, webPort].every((port) => Number.isInteger(port) && port > 0 && port < 65536)) throw new Error('Invalid E2E port');
 const apiOrigin = `http://localhost:${apiPort}`;
@@ -27,7 +27,8 @@ export default defineConfig({
       command: 'node --import tsx ../src/dev-memory.ts',
       url: `${apiOrigin}/health`,
       reuseExistingServer: !process.env.CI,
-      env: { PORT: String(apiPort), NODE_ENV: 'test', AUTH_RATE_LIMIT_MAX: '100' },
+      // Emails are written to files the tests read links from; links point at the e2e web server.
+      env: { PORT: String(apiPort), NODE_ENV: 'test', AUTH_RATE_LIMIT_MAX: '100', APP_URL: webOrigin, MAIL_TRANSPORT: 'file', MAIL_OUTBOX_DIR: OUTBOX_DIR },
       timeout: 60_000,
     },
     {

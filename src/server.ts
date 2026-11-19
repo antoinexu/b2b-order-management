@@ -1,6 +1,7 @@
 import { createApp } from './app';
 import { config } from './config';
 import { createPgDatabase } from './db/client';
+import { settleBackgroundTasks } from './lib/background';
 
 async function main() {
   const database = createPgDatabase(config.DATABASE_URL);
@@ -14,7 +15,8 @@ async function main() {
   const shutdown = (signal: string) => {
     console.log(`${signal} received, shutting down`);
     server.close(() => {
-      database.close().finally(() => process.exit(0));
+      // Let queued emails go out before the database connection closes.
+      settleBackgroundTasks().finally(() => database.close().finally(() => process.exit(0)));
     });
   };
   process.on('SIGTERM', () => shutdown('SIGTERM'));

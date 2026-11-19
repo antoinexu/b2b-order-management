@@ -6,10 +6,12 @@ import {
 export const USER_ROLES = ['admin', 'manager', 'sales', 'viewer'] as const;
 export const QUOTE_STATUSES = ['draft', 'sent', 'accepted', 'rejected', 'expired'] as const;
 export const ORDER_STATUSES = ['pending', 'confirmed', 'shipped', 'delivered', 'cancelled'] as const;
+export const USER_TOKEN_PURPOSES = ['invite', 'password_reset'] as const;
 
 export const userRole = pgEnum('user_role', USER_ROLES);
 export const quoteStatus = pgEnum('quote_status', QUOTE_STATUSES);
 export const orderStatus = pgEnum('order_status', ORDER_STATUSES);
+export const userTokenPurpose = pgEnum('user_token_purpose', USER_TOKEN_PURPOSES);
 
 const timestamps = {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -36,13 +38,27 @@ export const users = pgTable('users', {
   organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
   email: text('email').notNull(),
   name: text('name').notNull(),
-  passwordHash: text('password_hash').notNull(),
+  /** Null while an invitation is pending: the user cannot sign in until they accept it and choose a password. */
+  passwordHash: text('password_hash'),
   role: userRole('role').notNull().default('viewer'),
   /** Embedded in each JWT; incrementing it revokes every token issued before. */
   tokenVersion: integer('token_version').notNull().default(0),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
   ...timestamps,
 }, (t) => [uniqueIndex('users_email_uq').on(t.email)]);
+
+/**
+ * Single-use links emailed to a user (invitations and password resets). Only a SHA-256 hash of the token
+ * is stored, so a database leak does not expose working links. A user has at most one live token per purpose.
+ */
+export const userTokens = pgTable('user_tokens', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  purpose: userTokenPurpose('purpose').notNull(),
+  tokenHash: text('token_hash').notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [uniqueIndex('user_tokens_hash_uq').on(t.tokenHash), index('user_tokens_user_idx').on(t.userId, t.purpose)]);
 
 export const customers = pgTable('customers', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -184,3 +200,4 @@ export const orderStatusHistoryRelations = relations(orderStatusHistory, ({ one 
 export type UserRole = (typeof USER_ROLES)[number];
 export type QuoteStatus = (typeof QUOTE_STATUSES)[number];
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
+export type UserTokenPurpose = (typeof USER_TOKEN_PURPOSES)[number];

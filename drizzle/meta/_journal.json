@@ -29,6 +29,13 @@
       "when": 1795041469709,
       "tag": "0003_pricing_policy",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1795100415012,
+      "tag": "0004_invitations_password_reset",
+      "breakpoints": true
     }
   ]
 }

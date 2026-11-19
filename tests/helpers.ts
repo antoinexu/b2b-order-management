@@ -6,18 +6,33 @@ import type { App } from 'supertest/types';
 import { createApp } from '../src/app';
 import { config, type Config } from '../src/config';
 import { MIGRATIONS_DIR, type DB } from '../src/db/client';
+import { memoryMailer, type Mailer } from '../src/lib/mailer';
 import * as schema from '../src/db/schema';
 import type { UserRole } from '../src/db/schema';
 
 /** Spins up a fresh in-memory Postgres (PGlite), applies real migrations and builds the app. */
-export async function setupTestApp(overrides: Partial<Config> = {}) {
+export async function setupTestApp(overrides: Partial<Config> = {}, options: { mailer?: Mailer } = {}) {
   const client = new PGlite();
   const pglite = drizzle(client, { schema });
   await migrate(pglite, { migrationsFolder: MIGRATIONS_DIR });
   const db = pglite as unknown as DB;
+  // Emails are collected in memory so tests can read the links they contain.
+  const mail = memoryMailer();
   // Suites register many organizations from one IP, so auth rate limiting is relaxed unless a test overrides it.
-  const app = createApp({ db, config: { ...config, NODE_ENV: 'test', AUTH_RATE_LIMIT_MAX: 10_000, ...overrides } });
-  return { app, db, close: () => client.close() };
+  const app = createApp({
+    db,
+    config: { ...config, NODE_ENV: 'test', AUTH_RATE_LIMIT_MAX: 10_000, APP_URL: 'http://app.test', ...overrides },
+    mailer: options.mailer ?? mail,
+  });
+  return { app, db, outbox: mail.outbox, close: () => client.close() };
+}
+
+/** Extracts the token from the last link in an email, e.g. `.../reset-password#token=abc`. */
+export function linkToken(text: string): string {
+  const match = [...text.matchAll(/#token=([\w-]+)/g)].at(-1);
+  if (!match) throw new Error(`No link in email:
+${text}`);
+  return match[1]!;
 }
 
 let seq = 0;

@@ -7,7 +7,7 @@ import { Button, buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ErrorState } from '@/components/States';
-import { LoginPage, RegisterPage } from '@/pages/auth/AuthPages';
+import { AcceptInvitationPage, ForgotPasswordPage, LoginPage, RegisterPage, ResetPasswordPage } from '@/pages/auth/AuthPages';
 
 // Route-level code splitting: each page is downloaded the first time it is visited.
 const page = <M extends Record<string, React.ComponentType>>(load: () => Promise<M>, name: keyof M) =>
@@ -80,6 +80,9 @@ const guard = (permission: Permission, element: ReactNode) => (
 export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
   { path: '/register', element: <RegisterPage /> },
+  { path: '/forgot-password', element: <ForgotPasswordPage /> },
+  { path: '/reset-password', element: <ResetPasswordPage /> },
+  { path: '/accept-invitation', element: <AcceptInvitationPage /> },
   {
     element: <RequireAuth />,
     children: [

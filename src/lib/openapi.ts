@@ -26,7 +26,7 @@ interface DocOptions {
   query?: z.ZodObject;
   body?: z.ZodType;
   response?: z.ZodType;
-  status?: 200 | 201 | 204;
+  status?: 200 | 201 | 202 | 204;
 }
 
 /** Registers one endpoint in the OpenAPI document with the standard error responses. */
