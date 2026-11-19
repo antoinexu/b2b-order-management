@@ -1264,9 +1264,13 @@
             "nullable": true,
             "format": "date-time"
           },
+          "outdated": {
+            "type": "boolean",
+            "description": "The quote changed after this email was prepared. Its link no longer works and it can't be retried; send the current version instead."
+          },
           "retryable": {
             "type": "boolean",
-            "description": "Whether POST .../retry may be used now"
+            "description": "Whether POST .../retry may be used now: a failed or stuck email of the current, still emailable version"
           },
           "createdAt": {
             "type": "string",
@@ -1287,6 +1291,7 @@
           "lastAttemptAt",
           "lastError",
           "sentAt",
+          "outdated",
           "retryable",
           "createdAt"
         ]
@@ -4768,6 +4773,16 @@
               }
             }
           },
+          "410": {
+            "description": "`QUOTE_CHANGED`: the quote was changed after this email was sent, so the link no longer works. The new version is not revealed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "429": {
             "description": "Too many attempts from this IP (rate limited)",
             "content": {
@@ -4830,6 +4845,16 @@
               }
             }
           },
+          "410": {
+            "description": "`QUOTE_CHANGED`: the quote was changed after this email was sent, so the link no longer works. The new version is not revealed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "429": {
             "description": "Too many attempts from this IP (rate limited)",
             "content": {
@@ -4883,6 +4908,16 @@
           },
           "409": {
             "description": "Conflict or invalid state transition",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "`QUOTE_CHANGED`: the quote was changed after this email was sent, so the link no longer works. The new version is not revealed.",
             "content": {
               "application/json": {
                 "schema": {

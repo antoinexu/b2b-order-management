@@ -17,6 +17,8 @@ export const forbidden = (message = 'You do not have permission to perform this 
 export const notFound = (resource: string) => new AppError(404, 'NOT_FOUND', `${resource} not found`);
 export const conflict = (message: string) => new AppError(409, 'CONFLICT', message);
 export const invalidState = (message: string) => new AppError(409, 'INVALID_STATE', message);
+export const quoteChangedLink = () =>
+  new AppError(410, 'QUOTE_CHANGED', 'This quote was changed after this email was sent, so its link no longer works. Ask the sender for the current version.');
 export const invalidLink = () =>
   new AppError(400, 'INVALID_LINK', 'This link is invalid, has expired or was already used. Ask for a new one.');
 export const emailUnavailable = (consequence: string) =>

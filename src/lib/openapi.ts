@@ -29,6 +29,8 @@ interface DocOptions {
   response?: z.ZodType;
   /** The success response is a file of this type instead of JSON. */
   file?: 'application/pdf';
+  /** Error responses specific to this endpoint, beyond the standard ones, by status code. */
+  errors?: Record<number, string>;
   status?: 200 | 201 | 202 | 204;
 }
 
@@ -59,6 +61,7 @@ export function doc(o: DocOptions) {
       ...(o.params ? { 404: errorResponse('Resource not found') } : {}),
       409: errorResponse('Conflict or invalid state transition'),
       ...(o.public ? { 429: errorResponse('Too many attempts from this IP (rate limited)') } : {}),
+      ...Object.fromEntries(Object.entries(o.errors ?? {}).map(([code, description]) => [code, errorResponse(description)])),
     },
   });
 }

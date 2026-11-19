@@ -4,6 +4,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import type { Config } from '../config';
 import type { DB } from '../db/client';
 import { customers, organizations, quoteDeliveries, quotes, users, QUOTE_DELIVERY_STATUSES } from '../db/schema';
+import { todayIn } from '../lib/dates';
 import { QUOTE_LINK_PLACEHOLDER, quoteEmail } from '../lib/emails';
 import { badRequest, conflict, emailUnavailable, invalidState, notFound, pgErrorCode, PG_UNIQUE_VIOLATION } from '../lib/errors';
 import type { Mailer } from '../lib/mailer';
@@ -14,7 +15,7 @@ import { auth, requirePermission, type AuthContext } from '../middleware/auth';
 import { Email } from './auth';
 import type { Tx } from './line-items';
 import {
-  assertNotBeingEmailed, effectiveStatus, isPastValidity, lockQuote, quotePdfData, recordStatus, SENDING_LEASE_MS, todayFor,
+  assertNotBeingEmailed, effectiveStatus, isPastValidity, lockQuote, quotePdfData, recordStatus, SENDING_LEASE_MS,
 } from './quotes';
 
 const QuoteParams = z.object({ id: z.uuid() });
@@ -49,7 +50,10 @@ export const QuoteDelivery = z
     lastAttemptAt: z.date().nullable(),
     lastError: z.string().nullable(),
     sentAt: z.date().nullable(),
-    retryable: z.boolean().openapi({ description: 'Whether POST .../retry may be used now' }),
+    outdated: z.boolean().openapi({
+      description: "The quote changed after this email was prepared. Its link no longer works and it can't be retried; send the current version instead.",
+    }),
+    retryable: z.boolean().openapi({ description: 'Whether POST .../retry may be used now: a failed or stuck email of the current, still emailable version' }),
     createdAt: z.date(),
   })
   .openapi('QuoteDelivery');
@@ -68,7 +72,21 @@ const MAX_ERROR_LENGTH = 500;
 const isStale = (row: Pick<DeliveryRow, 'status' | 'lastAttemptAt'>) =>
   row.status === 'sending' && (!row.lastAttemptAt || Date.now() - row.lastAttemptAt.getTime() > SENDING_LEASE_MS);
 
-function toDelivery(row: DeliveryRow, sentByName: string): z.infer<typeof QuoteDelivery> {
+type QuoteState = Pick<typeof quotes.$inferSelect, 'status' | 'validUntil' | 'revision'>;
+
+/** Why a quote can't be emailed (or an email of it retried) right now, if it can't. */
+function notEmailableReason(quote: QuoteState, timezone: string): string | null {
+  const today = todayIn(timezone);
+  const status = effectiveStatus(quote, today);
+  if (status !== 'draft' && status !== 'sent') return `Only draft or sent quotes can be emailed; this quote is ${status}`;
+  if (isPastValidity(quote.validUntil, today)) {
+    return `validUntil is in the past (today is ${today} in ${timezone}); update it before emailing the quote`;
+  }
+  return null;
+}
+
+function toDelivery(row: DeliveryRow, sentByName: string, quote: QuoteState, timezone: string): z.infer<typeof QuoteDelivery> {
+  const outdated = row.quoteRevision !== quote.revision;
   return {
     id: row.id,
     quoteId: row.quoteId,
@@ -83,17 +101,21 @@ function toDelivery(row: DeliveryRow, sentByName: string): z.infer<typeof QuoteD
     lastAttemptAt: row.lastAttemptAt,
     lastError: row.lastError,
     sentAt: row.sentAt,
-    retryable: row.status === 'failed' || isStale(row),
+    outdated,
+    retryable: (row.status === 'failed' || isStale(row)) && !outdated && notEmailableReason(quote, timezone) === null,
     createdAt: row.createdAt,
   };
 }
 
-async function loadDelivery(db: DB | Tx, organizationId: string, quoteId: string, deliveryId: string) {
-  const [row] = await db.select({ delivery: quoteDeliveries, sentByName: users.name }).from(quoteDeliveries)
+const quoteState = { status: quotes.status, validUntil: quotes.validUntil, revision: quotes.revision };
+
+async function loadDelivery(db: DB | Tx, ctx: Pick<AuthContext, 'organizationId' | 'timezone'>, quoteId: string, deliveryId: string) {
+  const [row] = await db.select({ delivery: quoteDeliveries, sentByName: users.name, quote: quoteState }).from(quoteDeliveries)
     .innerJoin(users, eq(users.id, quoteDeliveries.sentById))
-    .where(and(eq(quoteDeliveries.id, deliveryId), eq(quoteDeliveries.quoteId, quoteId), eq(quoteDeliveries.organizationId, organizationId)));
+    .innerJoin(quotes, eq(quotes.id, quoteDeliveries.quoteId))
+    .where(and(eq(quoteDeliveries.id, deliveryId), eq(quoteDeliveries.quoteId, quoteId), eq(quoteDeliveries.organizationId, ctx.organizationId)));
   if (!row) throw notFound('Delivery');
-  return toDelivery(row.delivery, row.sentByName);
+  return toDelivery(row.delivery, row.sentByName, row.quote, ctx.timezone);
 }
 
 async function findByKey(db: DB | Tx, organizationId: string, quoteId: string, key: string) {
@@ -104,13 +126,9 @@ async function findByKey(db: DB | Tx, organizationId: string, quoteId: string, k
 }
 
 /** A quote can be emailed while it is a draft or awaiting the customer, and not past its validity date. */
-function assertEmailable(quote: typeof quotes.$inferSelect, ctx: Pick<AuthContext, 'timezone'>) {
-  const today = todayFor({ organizationId: quote.organizationId, timezone: ctx.timezone });
-  const status = effectiveStatus(quote, today);
-  if (status !== 'draft' && status !== 'sent') throw invalidState(`Only draft or sent quotes can be emailed; this quote is ${status}`);
-  if (isPastValidity(quote.validUntil, today)) {
-    throw invalidState(`validUntil is in the past (today is ${today} in ${ctx.timezone}); update it before emailing the quote`);
-  }
+function assertEmailable(quote: QuoteState, ctx: Pick<AuthContext, 'timezone'>) {
+  const reason = notEmailableReason(quote, ctx.timezone);
+  if (reason) throw invalidState(reason);
 }
 
 interface Claim {
@@ -157,17 +175,21 @@ export function quoteDeliveriesRouter(db: DB, config: Config, mailer: Mailer) {
         await tx.update(quoteDeliveries).set({ status: 'failed', lastError: outcome.error, accessTokenHash: null }).where(own);
         return;
       }
+      // Edits wait while an attempt is in flight, but not forever: once its lease runs out (e.g. a hung provider
+      // call) the draft may be edited and even emailed again. An attempt that finishes after that did send its
+      // email, so it is recorded as sent, but the quote it showed no longer exists: it changes nothing about the
+      // quote, and its link is refused because revisions only ever increase (see quote-responses).
+      const current = quote.revision === delivery.quoteRevision;
       const [sent] = await tx.update(quoteDeliveries)
         .set({ status: 'sent', sentAt: sql`clock_timestamp()`, providerMessageId: outcome.providerId, lastError: null })
         .where(own)
         .returning();
-      // Edits are blocked while an email is in flight, so the revision still matches; checked anyway.
-      if (sent && quote.status === 'draft' && quote.revision === delivery.quoteRevision) {
+      if (sent && current && quote.status === 'draft') {
         await tx.update(quotes).set({ status: 'sent' }).where(eq(quotes.id, quote.id));
         await recordStatus(tx, quote.id, 'draft', 'sent', delivery.sentById);
       }
     });
-    return loadDelivery(db, ctx.organizationId, delivery.quoteId, delivery.id);
+    return loadDelivery(db, ctx, delivery.quoteId, delivery.id);
   }
 
   router.post('/:id/deliveries', requirePermission('quotes:write'), async (req, res) => {
@@ -183,7 +205,7 @@ export function quoteDeliveriesRouter(db: DB, config: Config, mailer: Mailer) {
         && (body.recipientName === undefined || body.recipientName === row.recipientName)
         && (body.message ?? null) === row.message;
       if (!same) throw conflict('This Idempotency-Key was already used to send a different email');
-      res.set('Idempotent-Replayed', 'true').json(await loadDelivery(db, ctx.organizationId, id, row.id));
+      res.set('Idempotent-Replayed', 'true').json(await loadDelivery(db, ctx, id, row.id));
     };
 
     const earlier = await findByKey(db, ctx.organizationId, id, key);
@@ -254,15 +276,15 @@ export function quoteDeliveriesRouter(db: DB, config: Config, mailer: Mailer) {
   });
 
   router.get('/:id/deliveries', requirePermission('quotes:read'), async (req, res) => {
-    const { organizationId } = auth(req);
+    const { organizationId, timezone } = auth(req);
     const { id } = QuoteParams.parse(req.params);
-    const [quote] = await db.select({ id: quotes.id }).from(quotes).where(and(eq(quotes.id, id), eq(quotes.organizationId, organizationId)));
+    const [quote] = await db.select(quoteState).from(quotes).where(and(eq(quotes.id, id), eq(quotes.organizationId, organizationId)));
     if (!quote) throw notFound('Quote');
     const rows = await db.select({ delivery: quoteDeliveries, sentByName: users.name }).from(quoteDeliveries)
       .innerJoin(users, eq(users.id, quoteDeliveries.sentById))
       .where(eq(quoteDeliveries.quoteId, id))
       .orderBy(desc(quoteDeliveries.createdAt), desc(quoteDeliveries.id));
-    res.json({ data: rows.map((r) => toDelivery(r.delivery, r.sentByName)) });
+    res.json({ data: rows.map((r) => toDelivery(r.delivery, r.sentByName, quote, timezone)) });
   });
 
   router.post('/:id/deliveries/:deliveryId/retry', requirePermission('quotes:write'), async (req, res) => {

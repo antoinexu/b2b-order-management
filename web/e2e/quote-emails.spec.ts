@@ -112,7 +112,7 @@ test('a failed email is shown as failed, retried as the same email, and double c
     id: '00000000-0000-4000-8000-000000000001', quoteId: quote.id, status, recipientEmail: customerEmail, recipientName: 'Dana Buyer',
     message: null, subject: `Quote ${quote.number} from Failing Supply`, sentById: sales.user.id, sentByName: 'Sam Sales', attempts,
     lastAttemptAt: new Date().toISOString(), lastError: status === 'failed' ? 'Resend rejected the email (422): invalid domain' : null,
-    sentAt: status === 'sent' ? new Date().toISOString() : null, retryable: status === 'failed', createdAt: new Date().toISOString(),
+    sentAt: status === 'sent' ? new Date().toISOString() : null, outdated: false, retryable: status === 'failed', createdAt: new Date().toISOString(),
   });
   // Simulate a mail provider outage for the first send; the retry succeeds.
   const keys: string[] = [];
@@ -142,4 +142,24 @@ test('a failed email is shown as failed, retried as the same email, and double c
   await expect(page.getByText(`Quote emailed to ${customerEmail}`)).toBeVisible();
   expect(retried).toBe(1);
   expect(keys.length).toBeLessThanOrEqual(2);
+});
+
+test('an email of an older version offers sending the current version instead of a retry', async ({ page, request }) => {
+  const { sales, customerEmail, quote } = await setup(request, 'Outdated');
+  // A failed email whose draft was edited afterwards, as the API reports it.
+  await page.route(`**/api/v1/quotes/${quote.id}/deliveries`, (route) => route.request().method() === 'GET'
+    ? route.fulfill({ json: { data: [{
+      id: '00000000-0000-4000-8000-000000000002', quoteId: quote.id, status: 'failed', recipientEmail: customerEmail, recipientName: null,
+      message: null, subject: `Quote ${quote.number} from Outdated Supply`, sentById: sales.user.id, sentByName: 'Sam Sales', attempts: 1,
+      lastAttemptAt: new Date().toISOString(), lastError: 'Resend rejected the email (503)', sentAt: null, outdated: true, retryable: false,
+      createdAt: new Date().toISOString(),
+    }] } })
+    : route.fallback());
+
+  await openAs(page, sales.token, `/quotes/${quote.id}`);
+  const record = page.getByRole('listitem', { name: `Email to ${customerEmail}` });
+  await expect(record).toContainText("The quote changed after this email was prepared, so it can't be retried.");
+  await expect(record.getByRole('button', { name: /Retry/ })).toHaveCount(0);
+  await record.getByRole('button', { name: 'Email current version' }).click();
+  await expect(page.getByRole('dialog', { name: `Email ${quote.number}` })).toBeVisible();
 });

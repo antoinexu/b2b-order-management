@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, Download, X } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { useLocation } from 'react-router';
-import { errorMessage, unwrap } from '@/api/client';
+import { ApiError, errorMessage, unwrap } from '@/api/client';
 import type { PublicQuote } from '@/api/types';
 import { useAuth } from '@/auth/AuthContext';
 import { FormField } from '@/components/FormField';
@@ -65,7 +65,11 @@ export function QuoteResponsePage() {
           <CardHeader><CardTitle><h1 className="text-xl">We couldn't open this quote</h1></CardTitle></CardHeader>
           <CardContent role="alert" className="grid gap-2 text-sm">
             <p className="text-destructive">{token ? errorMessage(view.error) : 'This link is incomplete.'}</p>
-            <p className="text-muted-foreground">Open the link from your email again, or reply to that email to reach the sender.</p>
+            <p className="text-muted-foreground">
+              {view.error instanceof ApiError && view.error.code === 'QUOTE_CHANGED'
+                ? 'Reply to the email you received to ask the sender for the current version.'
+                : 'Open the link from your email again, or reply to that email to reach the sender.'}
+            </p>
           </CardContent>
         </Card>
       </Shell>

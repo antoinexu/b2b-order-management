@@ -1,8 +1,9 @@
 import { and, eq } from 'drizzle-orm';
 import request from 'supertest';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { quoteDeliveries, quotes, quoteStatusHistory } from '../src/db/schema';
 import { settleBackgroundTasks } from '../src/lib/background';
+import type { OutgoingEmail, SentEmail } from '../src/lib/mailer';
 import { createUser, linkToken, registerOrg, setupTestApp, uniqueEmail, type Session } from './helpers';
 
 let ctx: Awaited<ReturnType<typeof setupTestApp>>;
@@ -358,5 +359,124 @@ describe('customer response', () => {
     await send(quote.id, key(), { recipientEmail: uniqueEmail('cfo') }).expect(201);
     await publicApi('view', { token: first }).expect(200);
     await publicApi('view', { token: linkToken(ctx.outbox.at(-1)!.text) }).expect(200);
+  });
+});
+
+/** A mailer that holds emails to chosen recipients until released, like a provider call that hangs. */
+function gatedMailer() {
+  const outbox: OutgoingEmail[] = [];
+  const gates = new Map<string, { opened: Promise<void>; open: () => void }>();
+  return {
+    enabled: true,
+    outbox,
+    hold(to: string) {
+      let open!: () => void;
+      gates.set(to, { opened: new Promise<void>((resolve) => { open = resolve; }), open });
+    },
+    release(to: string) { gates.get(to)?.open(); },
+    async send(email: OutgoingEmail): Promise<SentEmail> {
+      await gates.get(email.to)?.opened;
+      outbox.push(email);
+      return { id: `gated-${outbox.length}` };
+    },
+  };
+}
+
+describe('an email that finishes after the quote changed', () => {
+  it("can't be used to view or accept the new version, which may be for another customer", async () => {
+    const mailer = gatedMailer();
+    const app = await setupTestApp({}, { mailer });
+    try {
+      const owner = await registerOrg(app.app, 'Lease Org');
+      const customerA = (await owner.as('post', '/customers').send({ companyName: 'Customer A', email: 'a@a.example' }).expect(201)).body.id;
+      const customerB = (await owner.as('post', '/customers').send({ companyName: 'Customer B', email: 'b@b.example' }).expect(201)).body.id;
+      const quote = (await owner.as('post', '/quotes').send({
+        customerId: customerA, notes: 'Terms for A', items: [{ description: 'Widget', quantity: 1, unitPriceCents: 10_000 }],
+      }).expect(201)).body;
+      const sendTo = (k: string) => owner.as('post', `/quotes/${quote.id}/deliveries`).set('Idempotency-Key', k).send({});
+
+      // The email to A hangs at the provider...
+      mailer.hold('a@a.example');
+      const emailToA = sendTo('lease-key-a').then((r) => r);
+      await vi.waitFor(async () => {
+        expect(await app.db.select().from(quoteDeliveries).where(eq(quoteDeliveries.quoteId, quote.id))).toHaveLength(1);
+      });
+      // ...long enough for its lease to run out, so the draft can be changed: now for B, with B's private terms.
+      await app.db.update(quoteDeliveries).set({ lastAttemptAt: new Date(Date.now() - 6 * 60_000) }).where(eq(quoteDeliveries.quoteId, quote.id));
+      await owner.as('patch', `/quotes/${quote.id}`).send({
+        customerId: customerB, notes: 'Private terms for B', items: [{ description: 'Widget', quantity: 3, unitPriceCents: 9_000 }],
+      }).expect(200);
+      const toB = await sendTo('lease-key-b').expect(201);
+      expect(toB.body).toMatchObject({ status: 'sent', outdated: false });
+
+      // A's email finally goes out. It did send, so it is recorded as sent, but it describes a version that is gone.
+      mailer.release('a@a.example');
+      const toA = await emailToA;
+      expect(toA.status).toBe(201);
+      expect(toA.body).toMatchObject({ status: 'sent', outdated: true, retryable: false });
+
+      const tokenA = linkToken(mailer.outbox.find((e) => e.to === 'a@a.example')!.text);
+      const publicCall = (path: string, body: Record<string, unknown>) => request(app.app).post(`/api/v1/public/quotes/${path}`).send(body);
+      for (const [path, body] of [
+        ['view', { token: tokenA }],
+        ['pdf', { token: tokenA }],
+        ['respond', { token: tokenA, decision: 'accept', name: 'Someone at A' }],
+        ['respond', { token: tokenA, decision: 'reject', name: 'Someone at A' }],
+      ] as const) {
+        const res = await publicCall(path, body).expect(410);
+        expect(res.body.error).toMatchObject({ code: 'QUOTE_CHANGED' });
+        expect(JSON.stringify(res.body)).not.toMatch(/Private terms|Customer B|270/);
+      }
+
+      // The quote is untouched by A's link; B's link shows B's version and works.
+      const staff = (await owner.as('get', `/quotes/${quote.id}`).expect(200)).body;
+      expect(staff.status).toBe('sent');
+      expect(staff.history.map((h: { toStatus: string }) => h.toStatus)).toEqual(['draft', 'sent']);
+      const tokenB = linkToken(mailer.outbox.find((e) => e.to === 'b@b.example')!.text);
+      expect((await publicCall('view', { token: tokenB }).expect(200)).body).toMatchObject({ customerName: 'Customer B', quote: { notes: 'Private terms for B', totalCents: 27_000 } });
+      await publicCall('respond', { token: tokenB, decision: 'accept', name: 'Bea at B' }).expect(200);
+
+      // The API contract documents this answer on every link endpoint.
+      const contract = (await request(app.app).get('/openapi.json').expect(200)).body;
+      for (const path of ['view', 'pdf', 'respond']) {
+        expect(contract.paths[`/public/quotes/${path}`].post.responses['410'].description).toMatch(/^`QUOTE_CHANGED`/);
+      }
+
+      // The staff list tells the two apart.
+      const list = (await owner.as('get', `/quotes/${quote.id}/deliveries`).expect(200)).body.data;
+      expect(list.map((d: { recipientEmail: string; outdated: boolean }) => [d.recipientEmail, d.outdated]))
+        .toEqual([['b@b.example', false], ['a@a.example', true]]);
+    } finally {
+      await app.close();
+    }
+  });
+});
+
+describe('which emails can be retried', () => {
+  it('not an email of a version that was since edited: it is outdated, and the current version must be sent instead', async () => {
+    const quote = await draft();
+    ctx.mail.failWith = new Error('down');
+    const failed = await send(quote.id).expect(201);
+    expect(failed.body).toMatchObject({ retryable: true, outdated: false });
+    await sales.as('patch', `/quotes/${quote.id}`).send({ notes: 'Edited' }).expect(200);
+    const [listed] = (await sales.as('get', `/quotes/${quote.id}/deliveries`).expect(200)).body.data;
+    expect(listed).toMatchObject({ id: failed.body.id, status: 'failed', outdated: true, retryable: false });
+    await retry(quote.id, failed.body.id).expect(409);
+  });
+
+  it('not once the quote can no longer be emailed', async () => {
+    const accepted = await draft();
+    ctx.mail.failWith = new Error('down');
+    const failedAccepted = await send(accepted.id).expect(201);
+    await sales.as('post', `/quotes/${accepted.id}/send`).expect(200);
+    await sales.as('post', `/quotes/${accepted.id}/accept`).expect(200);
+    expect((await sales.as('get', `/quotes/${accepted.id}/deliveries`).expect(200)).body.data[0]).toMatchObject({ outdated: false, retryable: false });
+    await retry(accepted.id, failedAccepted.body.id).expect(409);
+
+    const lapsed = await draft();
+    const failedLapsed = await send(lapsed.id).expect(201);
+    await ctx.db.update(quotes).set({ validUntil: isoDate(-1) }).where(eq(quotes.id, lapsed.id));
+    expect((await sales.as('get', `/quotes/${lapsed.id}/deliveries`).expect(200)).body.data[0]).toMatchObject({ retryable: false });
+    await retry(lapsed.id, failedLapsed.body.id).expect(409);
   });
 });

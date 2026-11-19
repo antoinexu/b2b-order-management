@@ -267,7 +267,10 @@ web/                   React frontend (see web/README.md)
   for simultaneous requests. Retrying claims the row first, so concurrent retries send once; an attempt stuck in
   `sending` for 5 minutes (e.g. after a crash) can be retried. While an email is in flight the quote can't be edited,
   and a failed email of a draft that was edited since can't be retried, so customers only ever receive what the quote
-  says. Each attempt gets a new link token; links from failed attempts never work. Retries are manual (there is no
+  says. Each attempt gets a new link token; links from failed attempts never work. A customer link only works for
+  the version of the quote its email described: once a lease has expired the draft may be edited and emailed again,
+  so a late-finishing older email is recorded as sent but marked outdated, and its link (view, PDF and response,
+  re-checked under the quote's lock) answers `410 QUOTE_CHANGED` without revealing the new version. Retries are manual (there is no
   background worker), and if the process crashes after the provider accepted a message but before the outcome was
   saved, a later retry can send it twice.
 - **Email links that leak nothing.** `POST /auth/forgot-password` answers `202` with the same message for every

@@ -2827,6 +2827,15 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
+                /** @description `QUOTE_CHANGED`: the quote was changed after this email was sent, so the link no longer works. The new version is not revealed. */
+                410: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
                 /** @description Too many attempts from this IP (rate limited) */
                 429: {
                     headers: {
@@ -2894,6 +2903,15 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
+                /** @description `QUOTE_CHANGED`: the quote was changed after this email was sent, so the link no longer works. The new version is not revealed. */
+                410: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
                 /** @description Too many attempts from this IP (rate limited) */
                 429: {
                     headers: {
@@ -2954,6 +2972,15 @@ export interface paths {
                 };
                 /** @description Conflict or invalid state transition */
                 409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description `QUOTE_CHANGED`: the quote was changed after this email was sent, so the link no longer works. The new version is not revealed. */
+                410: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -3739,7 +3766,9 @@ export interface components {
             lastError: string | null;
             /** Format: date-time */
             sentAt: string | null;
-            /** @description Whether POST .../retry may be used now */
+            /** @description The quote changed after this email was prepared. Its link no longer works and it can't be retried; send the current version instead. */
+            outdated: boolean;
+            /** @description Whether POST .../retry may be used now: a failed or stuck email of the current, still emailable version */
             retryable: boolean;
             /** Format: date-time */
             createdAt: string;

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Paperclip, RotateCw } from 'lucide-react';
+import { Mail, Paperclip, RotateCw } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { toast } from 'sonner';
 import { errorMessage, unwrap } from '@/api/client';
@@ -132,8 +132,11 @@ export function EmailQuoteDialog({ quote, onClose }: { quote: Quote; onClose: ()
   );
 }
 
-/** Every email of the quote: who sent it to whom, when, and whether it went out. */
-export function QuoteEmailsCard({ quote }: { quote: Quote }) {
+/**
+ * Every email of the quote: who sent it to whom, when, and whether it went out. `onEmailCurrent` offers to send
+ * the current version in place of an email prepared from an older one.
+ */
+export function QuoteEmailsCard({ quote, onEmailCurrent }: { quote: Quote; onEmailCurrent?: () => void }) {
   const { api, can } = useAuth();
   const deliveries = useQuery({
     queryKey: deliveriesKey(quote.id),
@@ -161,6 +164,18 @@ export function QuoteEmailsCard({ quote }: { quote: Quote }) {
                 {d.attempts > 1 && ` · ${d.attempts} attempts`}
               </p>
               {d.status === 'failed' && d.lastError && <p className="text-xs text-destructive">{d.lastError}</p>}
+              {d.outdated && (
+                <p className="text-xs text-muted-foreground">
+                  {d.status === 'failed'
+                    ? "The quote changed after this email was prepared, so it can't be retried."
+                    : 'The quote changed after this email was prepared, so its link no longer works.'}
+                </p>
+              )}
+              {d.outdated && d.status === 'failed' && onEmailCurrent && (
+                <Button variant="outline" size="sm" className="mt-1 justify-self-start" onClick={onEmailCurrent}>
+                  <Mail /> Email current version
+                </Button>
+              )}
               {d.retryable && can('quotes:write') && (
                 <Button variant="outline" size="sm" className="mt-1 justify-self-start" disabled={retry.isPending}
                   aria-label={`Retry email to ${d.recipientEmail}`}

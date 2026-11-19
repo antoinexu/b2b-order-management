@@ -259,7 +259,8 @@ export function QuoteDetailPage() {
               {q.notes && <Detail label="Notes" value={<span className="whitespace-pre-wrap">{q.notes}</span>} />}
             </CardContent>
           </Card>
-          <QuoteEmailsCard quote={q} />
+          <QuoteEmailsCard quote={q}
+            onEmailCurrent={canWrite && (q.status === 'draft' || q.status === 'sent') ? () => setEmailing(true) : undefined} />
           <Card>
             <CardHeader><CardTitle>History</CardTitle></CardHeader>
             <CardContent>

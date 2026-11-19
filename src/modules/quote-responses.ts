@@ -5,7 +5,7 @@ import type { DB } from '../db/client';
 import { customers, organizations, quoteDeliveries, quotes, users, QUOTE_STATUSES } from '../db/schema';
 import { runInBackground } from '../lib/background';
 import { quoteResponseEmail } from '../lib/emails';
-import { invalidLink, invalidState } from '../lib/errors';
+import { invalidLink, invalidState, quoteChangedLink } from '../lib/errors';
 import type { Mailer } from '../lib/mailer';
 import { doc } from '../lib/openapi';
 import { z } from '../lib/zod';
@@ -53,17 +53,29 @@ const PublicQuote = z
   .openapi('PublicQuote');
 
 const T = 'Customer quote links';
-doc({ method: 'post', path: '/public/quotes/view', tag: T, summary: 'The quote behind an emailed link, for the customer to review', public: true, body: TokenBody, response: PublicQuote });
-doc({ method: 'post', path: '/public/quotes/pdf', tag: T, summary: 'The PDF exactly as it was attached to the email', public: true, body: TokenBody, file: 'application/pdf' });
-doc({ method: 'post', path: '/public/quotes/respond', tag: T, summary: 'Accept or decline the quote. Fails with 409 once it was answered or has expired', public: true, body: RespondBody, response: PublicQuote });
+/** Links only work for the version of the quote their email described. */
+const linkErrors = {
+  410: '`QUOTE_CHANGED`: the quote was changed after this email was sent, so the link no longer works. The new version is not revealed.',
+};
+doc({ method: 'post', path: '/public/quotes/view', tag: T, summary: 'The quote behind an emailed link, for the customer to review', public: true, body: TokenBody, response: PublicQuote, errors: linkErrors });
+doc({ method: 'post', path: '/public/quotes/pdf', tag: T, summary: 'The PDF exactly as it was attached to the email', public: true, body: TokenBody, file: 'application/pdf', errors: linkErrors });
+doc({ method: 'post', path: '/public/quotes/respond', tag: T, summary: 'Accept or decline the quote. Fails with 409 once it was answered or has expired', public: true, body: RespondBody, response: PublicQuote, errors: linkErrors });
 
-/** The sent delivery a link belongs to. Links from failed attempts were never delivered and don't resolve. */
+/**
+ * The sent delivery a link belongs to. Links from failed attempts were never delivered and don't resolve, and a
+ * link only ever shows the version of the quote its email described: if the quote has changed since (possible
+ * for a draft whose earlier email outlived its lease), the link is refused without revealing the new version.
+ */
 async function findDelivery(db: DB, token: string) {
-  const [row] = await db.select({ delivery: quoteDeliveries, timezone: organizations.timezone, organizationName: organizations.name })
+  const [row] = await db.select({
+    delivery: quoteDeliveries, revision: quotes.revision, timezone: organizations.timezone, organizationName: organizations.name,
+  })
     .from(quoteDeliveries)
+    .innerJoin(quotes, eq(quotes.id, quoteDeliveries.quoteId))
     .innerJoin(organizations, eq(organizations.id, quoteDeliveries.organizationId))
     .where(and(eq(quoteDeliveries.accessTokenHash, hashLinkToken(token)), eq(quoteDeliveries.status, 'sent')));
   if (!row) throw invalidLink();
+  if (row.revision !== row.delivery.quoteRevision) throw quoteChangedLink();
   return { ...row, scope: { organizationId: row.delivery.organizationId, timezone: row.timezone } satisfies QuoteScope };
 }
 
@@ -132,6 +144,8 @@ export function quoteResponsesRouter(db: DB, config: Config, mailer: Mailer) {
     const respondent = `${body.name} <${delivery.recipientEmail}>`;
     const outcome = await db.transaction(async (tx) => {
       const quote = await lockQuote(tx, scope.organizationId, delivery.quoteId);
+      // Checked again under the lock, so a change committed after the lookup can't slip through.
+      if (quote.revision !== delivery.quoteRevision) return { changed: true } as const;
       if (quote.status === 'sent' && isPastValidity(quote.validUntil, todayFor(scope))) {
         // Same rule as staff acceptance: the expiry is committed, then the request fails.
         await tx.update(quotes).set({ status: 'expired' }).where(eq(quotes.id, quote.id));
@@ -145,6 +159,7 @@ export function quoteResponsesRouter(db: DB, config: Config, mailer: Mailer) {
       await recordStatus(tx, quote.id, 'sent', next, { customer: respondent, note: body.note ?? null });
       return { decided: next } as const;
     });
+    if ('changed' in outcome) throw quoteChangedLink();
     if ('refused' in outcome) throw invalidState(outcome.refused!);
 
     // Let the salesperson know. Best effort: the customer's response is already saved.
