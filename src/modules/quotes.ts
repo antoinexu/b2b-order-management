@@ -1,10 +1,11 @@
 import { and, asc, count, desc, eq, gte, isNull, lt, or, sql, type SQL } from 'drizzle-orm';
 import { Router } from 'express';
 import type { DB } from '../db/client';
-import { customers, orders, quoteItems, quotes, quoteStatusHistory, QUOTE_STATUSES, type QuoteStatus } from '../db/schema';
+import { customers, orders, organizations, quoteItems, quotes, quoteStatusHistory, users, QUOTE_STATUSES, type QuoteStatus } from '../db/schema';
 import { todayIn } from '../lib/dates';
 import { invalidState, notFound } from '../lib/errors';
 import { doc } from '../lib/openapi';
+import { renderQuotePdf, type QuotePdfData } from '../lib/quote-pdf';
 import { IdParams, paginated, PaginationQuery, z } from '../lib/zod';
 import { auth, requirePermission, type AuthContext } from '../middleware/auth';
 import { assertCustomer, Currency, DocumentCurrency, LineItem, LineItemInput, nextDocumentNumber, resolveLines, TaxRateBps, type Tx } from './line-items';
@@ -78,6 +79,7 @@ const T = 'Quotes';
 doc({ method: 'get', path: '/quotes', tag: T, summary: "List quotes (filter by status or customer). Sent quotes past validUntil (in the organization's time zone) are reported as expired", permission: 'quotes:read', query: QuoteListQuery, response: paginated(QuoteSummary) });
 doc({ method: 'post', path: '/quotes', tag: T, summary: 'Create a draft quote', permission: 'quotes:write', body: CreateQuoteBody, response: Quote, status: 201 });
 doc({ method: 'get', path: '/quotes/{id}', tag: T, summary: 'Get a quote with line items', permission: 'quotes:read', params: IdParams, response: Quote });
+doc({ method: 'get', path: '/quotes/{id}/pdf', tag: T, summary: 'Download the quote as a PDF. Drafts, expired and rejected quotes carry a watermark', permission: 'quotes:read', params: IdParams, file: 'application/pdf' });
 doc({ method: 'patch', path: '/quotes/{id}', tag: T, summary: 'Edit a draft quote', permission: 'quotes:write', params: IdParams, body: UpdateQuoteBody, response: Quote });
 doc({ method: 'delete', path: '/quotes/{id}', tag: T, summary: 'Delete a draft quote', permission: 'quotes:write', params: IdParams, status: 204 });
 doc({ method: 'post', path: '/quotes/{id}/send', tag: T, summary: 'Mark a draft quote as sent to the customer', permission: 'quotes:write', params: IdParams, response: Quote });
@@ -127,6 +129,17 @@ async function loadQuote(db: DB | Tx, ctx: AuthContext, id: string) {
     customerName: customer.companyName,
     history: history.map(({ changedBy, ...h }) => ({ ...h, changedByName: changedBy.name })),
   };
+}
+
+/** Everything the quote PDF shows, read in one place so the download and the emailed copy are identical. */
+export async function quotePdfData(db: DB | Tx, ctx: AuthContext, id: string): Promise<QuotePdfData> {
+  const quote = await loadQuote(db, ctx, id);
+  const [[customer], [organization], [creator]] = await Promise.all([
+    db.select().from(customers).where(eq(customers.id, quote.customerId)),
+    db.select({ name: organizations.name, timezone: organizations.timezone }).from(organizations).where(eq(organizations.id, ctx.organizationId)),
+    db.select({ name: users.name, email: users.email }).from(users).where(eq(users.id, quote.createdById)),
+  ]);
+  return { organization: organization!, quote, customer: customer!, items: quote.items, preparedBy: creator! };
 }
 
 /** Appends an audit entry for a status change. Must run in the same transaction as the change. */
@@ -211,6 +224,15 @@ export function quotesRouter(db: DB) {
     const ctx = auth(req);
     const { id } = IdParams.parse(req.params);
     res.json(await loadQuote(db, ctx, id));
+  });
+
+  router.get('/:id/pdf', requirePermission('quotes:read'), async (req, res) => {
+    const ctx = auth(req);
+    const { id } = IdParams.parse(req.params);
+    const data = await quotePdfData(db, ctx, id);
+    const pdf = await renderQuotePdf(data);
+    // Quotes are confidential: keep them out of shared caches.
+    res.set('Cache-Control', 'private, no-store').type('application/pdf').attachment(`${data.quote.number}.pdf`).send(pdf);
   });
 
   router.patch('/:id', requirePermission('quotes:write'), async (req, res) => {

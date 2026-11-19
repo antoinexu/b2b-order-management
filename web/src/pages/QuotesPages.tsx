@@ -1,5 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowRightLeft, Check, Pencil, Plus, Send, Trash2, X } from 'lucide-react';
+import { ArrowRightLeft, Check, Download, Pencil, Plus, Send, Trash2, X } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { toast } from 'sonner';
@@ -169,6 +169,17 @@ function quoteTimeline(q: Quote, timeZone: string): TimelineEntry[] {
   return entries;
 }
 
+/** Hands a downloaded file to the browser's save flow. */
+function saveFile(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.click();
+  // Revoke after the click has been handled, so the download isn't cut off.
+  setTimeout(() => URL.revokeObjectURL(url), 1_000);
+}
+
 export function QuoteDetailPage() {
   const { id = '' } = useParams();
   const navigate = useNavigate();
@@ -193,6 +204,10 @@ export function QuoteDetailPage() {
     mutationFn: () => unwrap(api.DELETE('/quotes/{id}', { params: { path: { id } } })),
     onSuccess: () => { refresh(); toast.success('Draft deleted'); navigate('/quotes'); },
   });
+  const downloadPdf = useMutation({
+    mutationFn: () => unwrap(api.GET('/quotes/{id}/pdf', { params: { path: { id } }, parseAs: 'blob' })),
+    onSuccess: (blob) => saveFile(blob, `${quote.data?.number ?? 'quote'}.pdf`),
+  });
 
   if (quote.isPending) return <TableSkeleton />;
   if (quote.isError) return <ErrorState error={quote.error} onRetry={() => quote.refetch()} />;
@@ -206,6 +221,9 @@ export function QuoteDetailPage() {
         description={<>For <span className="font-medium text-foreground">{q.customerName}</span> · Created {formatDate(q.createdAt)}</>}
         actions={
           <>
+            <Button variant="outline" disabled={downloadPdf.isPending} onClick={() => downloadPdf.mutate()}>
+              <Download /> {downloadPdf.isPending ? 'Preparing…' : 'PDF'}
+            </Button>
             {canWrite && q.status === 'draft' && (
               <>
                 <ConfirmDialog trigger={<Button variant="ghost" disabled={remove.isPending}><Trash2 /> Delete</Button>}

@@ -41,6 +41,11 @@ Sign in with one click as **Admin**, **Manager**, **Sales** or **Viewer** to see
   A quote stays valid through the end of its `validUntil` date in the organization's time zone (set at registration,
   editable by admins), and a sent quote counts as expired as soon as that day has passed, even if nobody has acted on it.
   Every status change is recorded with who made it and when.
+- **Quote PDFs:** any quote downloads as an A4 PDF with the customer's billing details, line items, totals, payment
+  terms and validity date in the organization's time zone. Long quotes continue onto more pages with the column
+  headings repeated, and drafts, expired and rejected quotes carry a watermark. PDFs are generated on the server with
+  pdfkit (no headless browser). They use the standard PDF fonts, which cover English and Western European text:
+  other scripts, such as Chinese, show as `?`, and currency symbols the fonts lack (e.g. ₹) fall back to the ISO code.
 - **Orders:** created directly or converted from an accepted quote (at most once per quote), with lifecycle
   pending → confirmed → shipped → delivered (or cancelled) and a full status history.
 - **Discount limit:** sales reps can take at most a configurable share off catalog prices (20% by default), counting
@@ -177,7 +182,7 @@ All endpoints are under `/api/v1`. Full request and response schemas are in Swag
 | Users | `GET/POST /users`, `PATCH/DELETE /users/{id}`, `POST /users/{id}/resend-invitation` |
 | Customers | `GET/POST /customers`, `GET/PATCH/DELETE /customers/{id}` |
 | Products | `GET/POST /products`, `GET/PATCH/DELETE /products/{id}` |
-| Quotes | `GET/POST /quotes`, `GET/PATCH/DELETE /quotes/{id}`, `POST /quotes/{id}/send`, `/accept`, `/reject`, `/convert` |
+| Quotes | `GET/POST /quotes`, `GET/PATCH/DELETE /quotes/{id}`, `GET /quotes/{id}/pdf`, `POST /quotes/{id}/send`, `/accept`, `/reject`, `/convert` |
 | Orders | `GET/POST /orders`, `GET /orders/{id}`, `POST /orders/{id}/status` |
 
 Errors share one shape:
@@ -267,7 +272,8 @@ web/                   React frontend (see web/README.md)
       structured output to extract the customer, items and quantities, matches them to catalog SKUs, and returns a
       draft quote for a person to review before sending.
 - [ ] Audit log of all write operations (quote and order status changes are already recorded)
-- [ ] PDF export for quotes and orders
+- [x] PDF export for quotes
+- [ ] PDF export for orders
 - [ ] Refresh tokens
 - [x] Team invitations and password reset by email
 - [x] Frontend (React web app)

@@ -26,6 +26,8 @@ interface DocOptions {
   query?: z.ZodObject;
   body?: z.ZodType;
   response?: z.ZodType;
+  /** The success response is a file of this type instead of JSON. */
+  file?: 'application/pdf';
   status?: 200 | 201 | 202 | 204;
 }
 
@@ -45,9 +47,11 @@ export function doc(o: DocOptions) {
       body: o.body ? { content: { 'application/json': { schema: o.body } }, required: true } : undefined,
     },
     responses: {
-      [status]: o.response
-        ? { description: 'Success', content: { 'application/json': { schema: o.response } } }
-        : { description: 'Success' },
+      [status]: o.file
+        ? { description: 'Success', content: { [o.file]: { schema: z.string().openapi({ format: 'binary' }) } } }
+        : o.response
+          ? { description: 'Success', content: { 'application/json': { schema: o.response } } }
+          : { description: 'Success' },
       400: errorResponse('Validation error'),
       ...(o.public ? {} : { 401: errorResponse('Missing or invalid token'), 403: errorResponse('Insufficient permissions') }),
       ...(o.params ? { 404: errorResponse('Resource not found') } : {}),
