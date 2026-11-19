@@ -2673,7 +2673,7 @@ export interface components {
              * @example America/New_York
              */
             timezone?: string;
-            /** @description Largest effective discount off the catalog price, in bps, for users without pricing:override. They cannot discount custom lines at all. */
+            /** @description Largest effective discount off the catalog price, in bps, for users without pricing:override. They cannot add or change custom lines at all. */
             maxDiscountBps?: number;
             /** @description Base currency the catalog is priced in. Changing it does not convert existing prices. */
             currency?: string;

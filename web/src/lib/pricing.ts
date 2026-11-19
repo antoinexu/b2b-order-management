@@ -18,11 +18,10 @@ export function lineTotalCents(quantity: number, unitPriceCents: number, discoun
 
 /**
  * Mirrors the API's discount limit for users without `pricing:override` (src/lib/pricing.ts there):
- * the net unit price may not fall more than `maxDiscountBps` below the catalog price, and custom lines
- * (no catalog price) may not be discounted. Returns a message, or null when the line is allowed.
+ * the net unit price may not fall more than `maxDiscountBps` below the catalog price. (Custom lines, which
+ * have no catalog price, are off limits to them entirely.) Returns a message, or null when the line is allowed.
  */
-export function discountViolation(unitPriceCents: number, discountBps: number, catalogPriceCents: number | undefined, maxDiscountBps: number): string | null {
-  if (catalogPriceCents === undefined) return discountBps > 0 ? "Custom lines can't be discounted." : null;
+export function discountViolation(unitPriceCents: number, discountBps: number, catalogPriceCents: number, maxDiscountBps: number): string | null {
   const net = BigInt(unitPriceCents) * (BPS - BigInt(discountBps));
   if (net >= BigInt(catalogPriceCents) * (BPS - BigInt(maxDiscountBps))) return null;
   const effectiveBps = Number(BPS - net / BigInt(catalogPriceCents));

@@ -698,7 +698,7 @@
             "type": "integer",
             "minimum": 0,
             "maximum": 10000,
-            "description": "Largest effective discount off the catalog price, in bps, for users without pricing:override. They cannot discount custom lines at all."
+            "description": "Largest effective discount off the catalog price, in bps, for users without pricing:override. They cannot add or change custom lines at all."
           },
           "currency": {
             "type": "string",

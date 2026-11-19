@@ -23,10 +23,12 @@ interface Props {
   label: string;
   value: string;
   selectedLabel?: string;
+  /** Offer "Custom item" among products. A line that is already custom still shows as such. */
+  allowCustom?: boolean;
   onChange: (option: CatalogOption | null) => void;
 }
 
-export function CatalogPicker({ resource, id, label, value, selectedLabel, onChange }: Props) {
+export function CatalogPicker({ resource, id, label, value, selectedLabel, allowCustom = true, onChange }: Props) {
   const { api } = useAuth();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -61,7 +63,7 @@ export function CatalogPicker({ resource, id, label, value, selectedLabel, onCha
   });
   const custom: CatalogOption = { id: CUSTOM_ITEM, label: 'Custom item' };
   const options = results.data?.pages.flatMap((p) => p.data) ?? [];
-  if (resource === 'products') options.push(custom);
+  if (resource === 'products' && allowCustom) options.push(custom);
   const current = !value ? null : value === CUSTOM_ITEM ? custom : selected.data
     ?? options.find((option) => option.id === value) ?? { id: value, label: selectedLabel ?? value };
 

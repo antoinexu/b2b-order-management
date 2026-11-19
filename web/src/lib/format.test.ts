@@ -95,8 +95,6 @@ describe('discountViolation (client preview of the API limit)', () => {
     expect(discountViolation(900, 1000, 1000, 2000)).toBeNull();
     expect(discountViolation(1000, 2500, 1000, 2000)).toBe('25% off the catalog price exceeds your 20% limit.');
     expect(discountViolation(299_999, 0, 375_000, 2000)).toBe('20.01% off the catalog price exceeds your 20% limit.');
-    expect(discountViolation(5000, 0, undefined, 2000)).toBeNull();
-    expect(discountViolation(5000, 100, undefined, 2000)).toBe("Custom lines can't be discounted.");
   });
 });
 

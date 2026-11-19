@@ -21,11 +21,6 @@ describe('discountViolation', () => {
       .toBe('effective discount of 20.01% off the catalog price exceeds the 20% limit');
   });
 
-  it('forbids discounting custom lines but not pricing them', () => {
-    expect(discountViolation({ unitPriceCents: 1, discountBps: 0 }, undefined, 2000)).toBeNull();
-    expect(discountViolation({ unitPriceCents: 1000, discountBps: 1 }, undefined, 10_000)).toBe('custom lines cannot be discounted');
-  });
-
   it('treats a free catalog product as impossible to undercut', () => {
     expect(discountViolation({ unitPriceCents: 0, discountBps: 10_000 }, 0, 0)).toBeNull();
   });
@@ -56,22 +51,29 @@ describe('sales discount limit', () => {
     expect((await manager.as('get', '/auth/me').expect(200)).body.permissions).toContain('pricing:override');
   });
 
-  it('lets sales quote within the limit, including custom lines at their own price', async () => {
+  it('lets sales quote catalog lines within the limit', async () => {
     await sales.as('post', '/quotes')
-      .send({ customerId, items: [catalogLine({ discountBps: 2000 }), catalogLine({ unitPriceCents: 8000 }), customLine()] })
+      .send({ customerId, items: [catalogLine({ discountBps: 2000 }), catalogLine({ unitPriceCents: 8000 })] })
       .expect(201);
   });
 
-  it('rejects sales discounts, price cuts and discounted custom lines beyond the limit', async () => {
+  it('keeps sales from adding custom lines, which have no catalog price to limit them', async () => {
+    // A custom line could otherwise carry a catalog product at any price.
+    for (const line of [customLine(), customLine(500), { description: 'Pump', quantity: 1, unitPriceCents: 1 }]) {
+      const res = await sales.as('post', '/quotes').send({ customerId, items: [catalogLine(), line] }).expect(403);
+      expect(res.body.error.message).toBe('Line 2: only a manager or admin can add or change custom lines.');
+    }
+    await sales.as('post', '/orders').send({ customerId, items: [customLine()] }).expect(403);
+  });
+
+  it('rejects sales discounts and price cuts beyond the limit', async () => {
     const overDiscount = await sales.as('post', '/quotes').send({ customerId, items: [catalogLine({ discountBps: 2500 })] }).expect(403);
     expect(overDiscount.body.error.message).toBe(
       'Line 1: effective discount of 25% off the catalog price exceeds the 20% limit. Ask a manager or admin to set this price.',
     );
     const priceCut = await sales.as('post', '/quotes')
-      .send({ customerId, items: [customLine(), catalogLine({ unitPriceCents: 9000, discountBps: 1500 })] }).expect(403);
+      .send({ customerId, items: [catalogLine(), catalogLine({ unitPriceCents: 9000, discountBps: 1500 })] }).expect(403);
     expect(priceCut.body.error.message).toMatch(/^Line 2: effective discount of 23.5%/);
-    const custom = await sales.as('post', '/quotes').send({ customerId, items: [customLine(500)] }).expect(403);
-    expect(custom.body.error.message).toMatch(/^Line 1: custom lines cannot be discounted/);
   });
 
   it('applies the same limit to orders placed directly', async () => {
@@ -91,8 +93,14 @@ describe('sales discount limit', () => {
       ({ ...(p ? { productId: p } : {}), description, quantity, unitPriceCents, discountBps }));
 
     // Resubmitting the same lines (as the editor does) plus a compliant new one is fine; so is a tax change alone.
-    await sales.as('patch', `/quotes/${quote.id}`).send({ notes: 'Called the buyer', items: [...keptLines, customLine()] }).expect(200);
+    await sales.as('patch', `/quotes/${quote.id}`).send({ notes: 'Called the buyer', items: [...keptLines, catalogLine()] }).expect(200);
     await sales.as('patch', `/quotes/${quote.id}`).send({ taxRateBps: 500 }).expect(200);
+
+    // The manager's custom line stays as long as it is unchanged; renaming or repricing it is a new custom line.
+    for (const changed of [{ description: 'Expedited freight' }, { unitPriceCents: 4000 }]) {
+      const res = await sales.as('patch', `/quotes/${quote.id}`).send({ items: [keptLines[0], { ...keptLines[1], ...changed }] }).expect(403);
+      expect(res.body.error.message).toBe('Line 2: only a manager or admin can add or change custom lines.');
+    }
 
     // Scaling up the discounted line, or duplicating it, is a new price decision.
     await sales.as('patch', `/quotes/${quote.id}`)
@@ -165,11 +173,13 @@ describe('sales discount limit', () => {
     const org = await registerOrg(ctx.app, 'Euro Org');
     const euroSales = await createUser(ctx.app, org, 'sales');
     const buyer = (await org.as('post', '/customers').send({ companyName: 'Euro Buyer' }).expect(201)).body.id;
+    const euroProduct = (await org.as('post', '/products').send({ sku: 'EURO', name: 'Euro item', unitPriceCents: 5000 }).expect(201)).body.id;
+    const euroLine = { productId: euroProduct, quantity: 1 };
     await org.as('patch', '/organization').send({ currency: 'usd' }).expect(400);
     expect((await org.as('patch', '/organization').send({ currency: 'EUR' }).expect(200)).body.currency).toBe('EUR');
-    const order = (await euroSales.as('post', '/orders').send({ customerId: buyer, items: [customLine()] }).expect(201)).body;
+    const order = (await euroSales.as('post', '/orders').send({ customerId: buyer, items: [euroLine] }).expect(201)).body;
     expect(order.currency).toBe('EUR');
-    await euroSales.as('post', '/orders').send({ customerId: buyer, currency: 'USD', items: [customLine()] }).expect(403);
+    await euroSales.as('post', '/orders').send({ customerId: buyer, currency: 'USD', items: [euroLine] }).expect(403);
   });
 
   it('converts an accepted quote at its agreed prices without rechecking them', async () => {

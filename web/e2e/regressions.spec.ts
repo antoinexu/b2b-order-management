@@ -283,10 +283,17 @@ test('a manager-priced quote in another currency stays editable for sales withou
   await page.getByRole('button', { name: 'Save changes' }).click();
   expect((await response).status()).toBe(200);
 
+  // The manager's custom line can be kept but not repriced or renamed by sales.
   await page.goto(`/quotes/${quote.id}/edit`);
   await page.getByLabel('Line 1 unit price').fill('40');
-  await page.getByRole('button', { name: 'Save changes' }).click();
-  await expect(page.getByRole('alert')).toContainText('Only a manager or admin can price in EUR; the catalog is priced in USD.');
+  await expect(page.getByRole('alert')).toHaveText('Only a manager or admin can add or change custom lines.');
+  await expect(page.getByRole('button', { name: 'Save changes' })).toBeDisabled();
+  await page.getByLabel('Line 1 unit price').fill('50');
+  await page.getByLabel('Line 1 description').fill('Setup and training');
+  await expect(page.getByRole('alert')).toHaveText('Only a manager or admin can add or change custom lines.');
+  await page.getByLabel('Line 1 description').fill('Setup');
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Save changes' })).toBeEnabled();
 });
 
 test('a new quote keeps its currency when the organization switches base currency mid-edit', async ({ page, request }) => {

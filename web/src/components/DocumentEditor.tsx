@@ -26,8 +26,8 @@ interface LineDraft {
   saved?: string;
 }
 
-const pricingKey = (productId: string | null, quantity: number, unitPriceCents: number | null, discountBps: number | null) =>
-  `${productId ?? ''}|${quantity}|${unitPriceCents}|${discountBps}`;
+const pricingKey = (productId: string | null, description: string, quantity: number, unitPriceCents: number | null, discountBps: number | null) =>
+  JSON.stringify([productId, description.trim(), quantity, unitPriceCents, discountBps]);
 
 export interface DocumentDraft {
   customerId: string;
@@ -79,7 +79,7 @@ export function DocumentEditor({ kind, initial, submitLabel, isSubmitting, error
           quantity: String(item.quantity),
           price: centsToInput(item.unitPriceCents),
           discount: String(item.discountBps / 100),
-          saved: pricingKey(item.productId, item.quantity, item.unitPriceCents, item.discountBps),
+          saved: pricingKey(item.productId, item.description, item.quantity, item.unitPriceCents, item.discountBps),
         }))
       : [blankLine()],
   );
@@ -110,10 +110,12 @@ export function DocumentEditor({ kind, initial, submitLabel, isSubmitting, error
     const p = parsed[i]!;
     if (maxDiscountBps === null || !p.valid) return null;
     const productId = line.productId === CUSTOM_ITEM ? null : line.productId;
-    if (line.saved === pricingKey(productId, p.quantity, p.unitPriceCents, p.discountBps)) return null;
-    if (productId !== null && line.catalogPriceCents === undefined) return null;
+    if (line.saved === pricingKey(productId, line.description, p.quantity, p.unitPriceCents, p.discountBps)) return null;
+    // Custom lines have no catalog price to limit them, so only a manager or admin can add or change one.
+    if (productId === null) return { message: 'Only a manager or admin can add or change custom lines.', blocking: true };
+    if (line.catalogPriceCents === undefined) return null;
     const message = discountViolation(p.unitPriceCents!, p.discountBps!, line.catalogPriceCents, maxDiscountBps);
-    return message ? { message, blocking: productId === null } : null;
+    return message ? { message, blocking: false } : null;
   });
   const lineTotals = parsed.map((p) => (p.valid ? lineTotalCents(p.quantity, p.unitPriceCents!, p.discountBps!) : null));
   const totals = lineTotals.every((total) => total !== null) && taxRateBps !== null
@@ -191,7 +193,7 @@ export function DocumentEditor({ kind, initial, submitLabel, isSubmitting, error
           {maxDiscountBps !== null && (
             <p className="text-sm text-muted-foreground">
               You can give up to {Number((maxDiscountBps / 100).toFixed(2))}% off catalog prices, counting both price changes and discounts.
-              Custom lines can't be discounted. Ask a manager or admin for anything beyond that.
+              Lines must come from the catalog. Ask a manager or admin for custom lines or anything beyond that.
             </p>
           )}
           <div className="hidden grid-cols-[minmax(0,2.2fr)_minmax(0,2fr)_5rem_7rem_5.5rem_7rem_2rem] gap-2 px-1 text-xs font-medium text-muted-foreground lg:grid">
@@ -201,7 +203,7 @@ export function DocumentEditor({ kind, initial, submitLabel, isSubmitting, error
             <div key={line.key} className="grid grid-cols-2 gap-2 rounded-md border p-3 lg:grid-cols-[minmax(0,2.2fr)_minmax(0,2fr)_5rem_7rem_5.5rem_7rem_2rem] lg:items-center lg:border-0 lg:p-1">
               <div className="col-span-2 lg:col-span-1">
                 <CatalogPicker resource="products" label={`Line ${i + 1} product`} value={line.productId}
-                  selectedLabel={line.description} onChange={(option) => pickProduct(line.key, option)} />
+                  allowCustom={maxDiscountBps === null} selectedLabel={line.description} onChange={(option) => pickProduct(line.key, option)} />
               </div>
               <Input className="col-span-2 lg:col-span-1" aria-label={`Line ${i + 1} description`} placeholder="Description" maxLength={500}
                 value={line.description} onChange={(e) => updateLine(line.key, { description: e.target.value })} />

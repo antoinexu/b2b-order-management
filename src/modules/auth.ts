@@ -27,7 +27,7 @@ export const TimeZone = z
   .openapi({ example: 'America/New_York', description: 'IANA time zone; quote validity dates end at midnight in this zone' });
 
 export const MaxDiscountBps = z.number().int().min(0).max(10_000).openapi({
-  description: 'Largest effective discount off the catalog price, in bps, for users without pricing:override. They cannot discount custom lines at all.',
+  description: 'Largest effective discount off the catalog price, in bps, for users without pricing:override. They cannot add or change custom lines at all.',
 });
 
 export const Organization = z

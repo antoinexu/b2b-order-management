@@ -41,9 +41,10 @@ Sign in with one click as **Admin**, **Manager**, **Sales** or **Viewer** to see
 - **Orders:** created directly or converted from an accepted quote (at most once per quote), with lifecycle
   pending → confirmed → shipped → delivered (or cancelled) and a full status history.
 - **Discount limit:** sales reps can take at most a configurable share off catalog prices (20% by default), counting
-  price cuts and discounts together, and can't discount custom lines. They can only price in the organization's base
-  currency (the one the catalog is priced in), and a manager-approved price is rechecked if the quote moves to another
-  customer or currency. Managers and admins can set any price.
+  price cuts and discounts together. Every line they add or change must be a catalog product: custom lines have no
+  catalog price to measure a discount against, so only managers and admins can add or change them. Sales reps can only
+  price in the organization's base currency (the one the catalog is priced in), and a manager-approved price is
+  rechecked if the quote moves to another customer or currency. Managers and admins can set any price.
 - **Correct money math:** integer cents and basis points, so totals have no floating-point drift. Only currencies with
   two decimal places (USD, EUR, GBP, CNY, …) are accepted, since amounts are stored in hundredths. Prices are copied onto
   each line item, so later catalog changes never alter existing quotes or orders.

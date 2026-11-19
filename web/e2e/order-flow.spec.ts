@@ -15,7 +15,7 @@ async function choose(page: Page, combobox: string, option: string | RegExp) {
 }
 
 test('sales quotes a customer, converts it, and a manager fulfils the order', async ({ page }) => {
-  // --- Sales builds a quote with a catalog line and a custom service line ---
+  // --- Sales builds a quote from catalog lines ---
   await loginAs(page, 'sales');
   await nav(page, 'Quotes').click();
   await page.getByRole('link', { name: 'New quote' }).click();
@@ -26,15 +26,12 @@ test('sales quotes a customer, converts it, and a manager fulfils the order', as
   await page.getByLabel('Line 1 quantity').fill('10'); // 10 x $24.50 = $245.00
 
   await page.getByRole('button', { name: 'Add line' }).click();
-  await choose(page, 'Line 2 product', 'Custom item');
-  await page.getByLabel('Line 2 description').fill('Installation service');
-  await page.getByLabel('Line 2 unit price').fill('100');
-  // Sales can't discount custom lines, but can price them.
-  await page.getByLabel('Line 2 discount percent').fill('25');
-  await expect(page.getByRole('alert')).toHaveText("Custom lines can't be discounted.");
-  await expect(page.getByRole('button', { name: 'Create draft' })).toBeDisabled();
-  await page.getByLabel('Line 2 discount percent').fill('0');
-  await page.getByLabel('Line 2 unit price').fill('75'); // $75.00
+  // Custom lines have no catalog price to hold a discount limit to, so sales isn't offered them.
+  await page.getByRole('combobox', { name: 'Line 2 product' }).click();
+  await expect(page.getByRole('option', { name: /BOLT-M8-50/ })).toBeVisible();
+  await expect(page.getByRole('option', { name: 'Custom item' })).toHaveCount(0);
+  await page.getByRole('option', { name: /PALLET-STD/ }).click();
+  await page.getByLabel('Line 2 quantity').fill('5'); // 5 x $15.00 = $75.00
   // Catalog discounts show an advisory preview; current prices are enforced by the API on save.
   await page.getByLabel('Line 1 discount percent').fill('25');
   await expect(page.getByRole('status').filter({ hasText: '25% off the catalog price' }))

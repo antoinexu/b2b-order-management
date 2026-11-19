@@ -67,16 +67,17 @@ describe('change password', () => {
 });
 
 describe('quote status history', () => {
-  let admin: Session, sales: Session, customerId: string;
+  let admin: Session, sales: Session, customerId: string, productId: string;
 
   beforeAll(async () => {
     admin = await registerOrg(ctx.app, 'History Org');
     sales = await createUser(ctx.app, admin, 'sales');
     customerId = (await admin.as('post', '/customers').send({ companyName: 'Audit Buyer' }).expect(201)).body.id;
+    productId = (await admin.as('post', '/products').send({ sku: 'WIDGET', name: 'Widget', unitPriceCents: 1000 }).expect(201)).body.id;
   });
 
   const draft = async () => (await sales.as('post', '/quotes')
-    .send({ customerId, items: [{ description: 'Widget', quantity: 1, unitPriceCents: 1000 }] }).expect(201)).body;
+    .send({ customerId, items: [{ productId, quantity: 1 }] }).expect(201)).body;
 
   it('records who created, sent and accepted a quote, in order', async () => {
     const quote = await draft();

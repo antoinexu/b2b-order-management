@@ -36,7 +36,7 @@ describe('quotes', () => {
         items: [
           { productId: boltId, quantity: 10, discountBps: 1000 },        // 10 x 24.50 - 10% = 220.50
           { productId: nutId, quantity: 5, unitPriceCents: 900 },       // custom price: 45.00
-          { description: 'Expedited shipping', quantity: 1, unitPriceCents: 2500 }, // 25.00
+          { productId: boltId, description: 'Hex Bolt, rush stock', quantity: 1, unitPriceCents: 2500 }, // 25.00
         ],
       })
       .expect(201);
