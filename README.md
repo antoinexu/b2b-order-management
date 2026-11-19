@@ -236,7 +236,7 @@ web/                   React frontend (see web/README.md)
 - **Prices copied onto line items.** Each line item stores its own description and unit price, so a quote or order reads the same forever.
 - **The tenant comes from the server, never the client.** The organization is resolved from the authenticated user on every request and added to every query.
 - **Expiry is derived, not scheduled.** Reads report a sent quote past `validUntil` as `expired`, and status filters use the same rule, so no background job is needed and nothing shows a stale "sent" quote. Accepting such a quote stores the `expired` status.
-- **Dates are UTC.** `validUntil` is a calendar date compared with the current UTC date, so a quote stays valid through the end of that day in UTC. Organizations in other time zones see it expire a few hours early or late; a per-organization time zone would fix that.
+- **Dates follow the organization's time zone.** `validUntil` is a calendar date compared with today's date in the organization's IANA time zone, so a quote stays valid through the end of that day where the business operates. Timestamps are stored as `timestamptz`. Changing the zone re-evaluates expiry immediately, because expiry is derived on read.
 - **Explicit state machines.** Quote and order transitions are declared in code, run inside a transaction with a row lock, and invalid moves return `409 INVALID_STATE`.
 - **Testing against real Postgres semantics.** PGlite runs the real migrations, so constraints, enums and transactions behave the same in tests as in production.
 
@@ -245,9 +245,9 @@ web/                   React frontend (see web/README.md)
 - [ ] **AI RFQ parsing:** `POST /rfqs/parse` accepts a free-text or emailed Request for Quote, uses an LLM with
       structured output to extract the customer, items and quantities, matches them to catalog SKUs, and returns a
       draft quote for a person to review before sending.
-- [ ] Audit log of all write operations
+- [ ] Audit log of all write operations (quote and order status changes are already recorded)
 - [ ] PDF export for quotes and orders
-- [ ] Refresh tokens and password reset
+- [ ] Refresh tokens and password reset by email (signed-in password change is done)
 - [x] Frontend (React web app)
 
 ## License
