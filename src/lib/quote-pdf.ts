@@ -49,6 +49,36 @@ export function formatAmount(cents: number, currency: string): string {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency, currencyDisplay: 'code' }).format(amount);
 }
 
+/**
+ * Splits text into lines no wider than `maxWidth`, breaking at spaces, and inside words only when a single word
+ * is wider than a line. Explicit line breaks are kept, including blank lines.
+ */
+export function wrapText(text: string, maxWidth: number, measure: (s: string) => number): string[] {
+  const lines: string[] = [];
+  for (const paragraph of text.split('\n')) {
+    let line = '';
+    for (const word of paragraph.split(' ')) {
+      const candidate = line === '' ? word : `${line} ${word}`;
+      if (measure(candidate) <= maxWidth) {
+        line = candidate;
+        continue;
+      }
+      if (line !== '') lines.push(line);
+      line = '';
+      // A word too long for any line is broken across lines.
+      for (const char of word) {
+        if (line !== '' && measure(line + char) > maxWidth) {
+          lines.push(line);
+          line = '';
+        }
+        line += char;
+      }
+    }
+    lines.push(line);
+  }
+  return lines;
+}
+
 const formatPercent = (bps: number) => `${Number((bps / 100).toFixed(2))}%`;
 const formatDateTime = (date: Date, timeZone: string) =>
   new Intl.DateTimeFormat('en-US', { timeZone, year: 'numeric', month: 'short', day: 'numeric' }).format(date);
@@ -119,56 +149,98 @@ export function renderQuotePdf(data: QuotePdfData): Promise<Buffer> {
   y = Math.max(leftEnd, y) + 28;
 
   // --- Line items ---
-  const columns = [
-    { key: '#', width: 24, align: 'left' as const },
-    { key: 'Description', width: 0, align: 'left' as const },
-    { key: 'Qty', width: 48, align: 'right' as const },
-    { key: 'Unit price', width: 82, align: 'right' as const },
-    { key: 'Discount', width: 56, align: 'right' as const },
-    { key: 'Amount', width: 86, align: 'right' as const },
-  ];
-  columns[1]!.width = width - columns.reduce((sum, c) => sum + c.width, 0);
+  // Layout is computed here rather than left to pdfkit's automatic wrapping and page breaks, so that a row's
+  // cells always stay together: figures never wrap, and only descriptions span lines (and, if long, pages).
+  const CELL_SIZE = 9.5;
   const gap = 6;
+  const rowPadding = 6;
+  const headerHeight = 26;
+  doc.font(FONT.regular).fontSize(CELL_SIZE);
+  const lineHeight = doc.currentLineHeight(true);
 
-  const drawRow = (cells: string[], top: number, font: string) => {
-    let x = left;
-    let height = 0;
-    doc.font(font).fontSize(9.5).fillColor(COLOR.text);
-    cells.forEach((cell, i) => {
-      const column = columns[i]!;
-      doc.text(cell, x + (i === 0 ? 4 : 0), top, { width: column.width - gap, align: column.align });
-      height = Math.max(height, doc.y - top);
-      x += column.width;
-    });
-    return height;
-  };
-  const drawHeader = (top: number) => {
-    doc.rect(left, top, width, 20).fill(COLOR.band);
-    drawRow(columns.map((c) => c.key), top + 6, FONT.bold);
-    return top + 26;
-  };
-
-  y = drawHeader(y);
-  items.forEach((item, index) => {
-    const cells = [
-      String(index + 1),
-      pdfSafe(item.description),
+  const rows = items.map((item, index) => ({
+    number: String(index + 1),
+    description: pdfSafe(item.description),
+    figures: [
       item.quantity.toLocaleString('en-US'),
       money(item.unitPriceCents),
       item.discountBps > 0 ? formatPercent(item.discountBps) : '—',
       money(item.lineTotalCents),
-    ];
-    doc.font(FONT.regular).fontSize(9.5);
-    const height = doc.heightOfString(cells[1]!, { width: columns[1]!.width - gap });
-    // Keep each row on one page, repeating the column headings on the next.
-    if (y + height + 8 > bottom()) {
-      doc.addPage();
-      y = drawHeader(doc.page.margins.top);
+    ],
+  }));
+  const figureColumns = [
+    { title: 'Qty', minWidth: 40 },
+    { title: 'Unit price', minWidth: 70 },
+    { title: 'Discount', minWidth: 52 },
+    { title: 'Amount', minWidth: 74 },
+  ];
+  // Each figure column is as wide as its widest value, so amounts up to the largest allowed fit on one line.
+  const textWidth = (text: string, font: string) => doc.font(font).fontSize(CELL_SIZE).widthOfString(text);
+  const numberWidth = Math.max(24, textWidth(String(rows.length), FONT.regular) + gap + 4);
+  const figureWidths = figureColumns.map((column, i) => Math.max(
+    column.minWidth,
+    textWidth(column.title, FONT.bold) + gap,
+    ...rows.map((row) => textWidth(row.figures[i]!, FONT.regular) + gap),
+  ));
+  const descriptionWidth = width - numberWidth - figureWidths.reduce((sum, w) => sum + w, 0);
+  const descriptionX = left + numberWidth;
+  doc.font(FONT.regular).fontSize(CELL_SIZE);
+  const descriptionLines = (text: string) => wrapText(text, descriptionWidth - gap, (s) => doc.widthOfString(s));
+
+  const drawFigures = (cells: string[], top: number, font: string) => {
+    doc.font(font).fontSize(CELL_SIZE).fillColor(COLOR.text);
+    let x = descriptionX + descriptionWidth;
+    cells.forEach((cell, i) => {
+      doc.text(cell, x, top, { width: figureWidths[i]! - gap, align: 'right', lineBreak: false });
+      x += figureWidths[i]!;
+    });
+  };
+  const drawHeader = (top: number) => {
+    doc.rect(left, top, width, 20).fill(COLOR.band);
+    doc.font(FONT.bold).fontSize(CELL_SIZE).fillColor(COLOR.text);
+    doc.text('#', left + 4, top + 6, { lineBreak: false });
+    doc.text('Description', descriptionX, top + 6, { lineBreak: false });
+    drawFigures(figureColumns.map((c) => c.title), top + 6, FONT.bold);
+    return top + headerHeight;
+  };
+  const newTablePage = () => {
+    doc.addPage();
+    return drawHeader(doc.page.margins.top);
+  };
+  /** How many description lines fit between `top` and the bottom margin, leaving room for the row padding. */
+  const linesThatFit = (top: number) => Math.floor((bottom() - top - rowPadding) / lineHeight);
+  const linesPerPage = linesThatFit(doc.page.margins.top + headerHeight);
+
+  y = drawHeader(y);
+  for (const row of rows) {
+    let lines = descriptionLines(row.description);
+    // A row that fits on one page is never split: if it doesn't fit here, it starts on the next page.
+    if (lines.length > linesThatFit(y) && (lines.length <= linesPerPage || linesThatFit(y) < 2)) y = newTablePage();
+    let first = true;
+    for (;;) {
+      const chunk = lines.slice(0, linesThatFit(y));
+      lines = lines.slice(chunk.length);
+      doc.font(FONT.regular).fontSize(CELL_SIZE).fillColor(COLOR.text);
+      // The number and figures go on the row's first line; a description continued on the next page follows
+      // the repeated column headings.
+      if (first) {
+        doc.text(row.number, left + 4, y, { lineBreak: false });
+        drawFigures(row.figures, y, FONT.regular);
+      } else {
+        // On a continuation page, a muted row number says which line item the text belongs to.
+        doc.fillColor(COLOR.muted).text(row.number, left + 4, y, { lineBreak: false });
+      }
+      chunk.forEach((line, i) => {
+        doc.font(FONT.regular).fontSize(CELL_SIZE).fillColor(COLOR.text)
+          .text(line, descriptionX, y + i * lineHeight, { width: descriptionWidth - gap, lineBreak: false });
+      });
+      y += chunk.length * lineHeight + rowPadding;
+      first = false;
+      if (lines.length === 0) break;
+      y = newTablePage();
     }
-    const drawn = drawRow(cells, y, FONT.regular);
-    y += drawn + 6;
     doc.moveTo(left, y - 3).lineTo(right, y - 3).lineWidth(0.5).strokeColor(COLOR.rule).stroke();
-  });
+  }
 
   // --- Totals ---
   const totals: [string, string, boolean][] = [
@@ -176,21 +248,25 @@ export function renderQuotePdf(data: QuotePdfData): Promise<Buffer> {
     [`Tax (${formatPercent(quote.taxRateBps)})`, money(quote.taxCents), false],
     [`Total (${quote.currency})`, money(quote.totalCents), true],
   ];
+  const totalFont = (strong: boolean) => doc.font(strong ? FONT.bold : FONT.regular).fontSize(strong ? 12 : 10);
+  // Sized to the widest label and value, so even the largest total stays on one line.
+  const valueWidth = Math.max(...totals.map(([, value, strong]) => totalFont(strong).widthOfString(value))) + 2;
+  const totalsLabelWidth = Math.max(...totals.map(([label, , strong]) => totalFont(strong).widthOfString(label))) + 24;
+  const totalsX = Math.min(left + width * 0.55, right - totalsLabelWidth - valueWidth);
   if (y + 70 > bottom()) {
     doc.addPage();
     y = doc.page.margins.top;
   }
   y += 8;
-  const totalsX = left + width * 0.55;
   for (const [label, value, strong] of totals) {
     if (strong) {
       doc.moveTo(totalsX, y - 4).lineTo(right, y - 4).lineWidth(1).strokeColor(COLOR.text).stroke();
       y += 2;
     }
-    doc.font(strong ? FONT.bold : FONT.regular).fontSize(strong ? 12 : 10).fillColor(COLOR.text);
-    doc.text(label, totalsX, y, { width: width * 0.25 });
-    doc.text(value, totalsX + width * 0.25, y, { width: width * 0.2, align: 'right' });
-    y = doc.y + 6;
+    totalFont(strong).fillColor(COLOR.text);
+    doc.text(label, totalsX, y, { lineBreak: false });
+    doc.text(value, right - valueWidth, y, { width: valueWidth, align: 'right', lineBreak: false });
+    y += doc.currentLineHeight(true) + 6;
   }
 
   // --- Notes and terms (pdfkit flows long notes onto further pages) ---
