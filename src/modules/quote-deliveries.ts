@@ -8,7 +8,7 @@ import { todayIn } from '../lib/dates';
 import { QUOTE_LINK_PLACEHOLDER, quoteEmail } from '../lib/emails';
 import { badRequest, conflict, emailUnavailable, invalidState, notFound, pgErrorCode, PG_UNIQUE_VIOLATION } from '../lib/errors';
 import type { Mailer } from '../lib/mailer';
-import { doc } from '../lib/openapi';
+import { doc, EMAIL_UNAVAILABLE } from '../lib/openapi';
 import { formatAmount, formatCalendarDate, renderQuotePdf } from '../lib/quote-pdf';
 import { z } from '../lib/zod';
 import { auth, requirePermission, type AuthContext } from '../middleware/auth';
@@ -59,9 +59,9 @@ export const QuoteDelivery = z
   .openapi('QuoteDelivery');
 
 const T = 'Quote emails';
-doc({ method: 'post', path: '/quotes/{id}/deliveries', tag: T, summary: "Email the quote's PDF and a link to accept or decline online. A draft becomes sent once the email is accepted by the mail provider. Answers 201 for a new delivery (check `status`: `sent` or `failed`) and 200 when replaying an Idempotency-Key", permission: 'quotes:write', params: QuoteParams, headers: IdempotencyHeaders, body: SendQuoteBody, response: QuoteDelivery, status: 201 });
+doc({ method: 'post', path: '/quotes/{id}/deliveries', tag: T, summary: "Email the quote's PDF and a link to accept or decline online. A draft becomes sent once the email is accepted by the mail provider. Answers 201 for a new delivery (check `status`: `sent` or `failed`) and 200 when replaying an Idempotency-Key", permission: 'quotes:write', params: QuoteParams, headers: IdempotencyHeaders, body: SendQuoteBody, response: QuoteDelivery, status: 201, errors: { 503: EMAIL_UNAVAILABLE } });
 doc({ method: 'get', path: '/quotes/{id}/deliveries', tag: T, summary: 'Emails of this quote, newest first, with their status, recipient, sender and any failure', permission: 'quotes:read', params: QuoteParams, response: z.object({ data: z.array(QuoteDelivery) }) });
-doc({ method: 'post', path: '/quotes/{id}/deliveries/{deliveryId}/retry', tag: T, summary: 'Try a failed email again, with the same content and recipient', permission: 'quotes:write', params: DeliveryParams, response: QuoteDelivery });
+doc({ method: 'post', path: '/quotes/{id}/deliveries/{deliveryId}/retry', tag: T, summary: 'Try a failed email again, with the same content and recipient', permission: 'quotes:write', params: DeliveryParams, response: QuoteDelivery, errors: { 503: EMAIL_UNAVAILABLE } });
 
 type DeliveryRow = typeof quoteDeliveries.$inferSelect;
 

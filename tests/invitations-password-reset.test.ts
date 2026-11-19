@@ -145,6 +145,19 @@ describe('invitations', () => {
 });
 
 describe('when email fails or is not configured', () => {
+  it('documents these answers on every endpoint that sends email', async () => {
+    const { paths } = (await request(ctx.app).get('/openapi.json').expect(200)).body;
+    const documented = (path: string) => Object.keys(paths[path].post.responses).filter((code) => code === '502' || code === '503');
+    expect(documented('/auth/forgot-password')).toEqual(['503']);
+    expect(documented('/users')).toEqual(['502', '503']);
+    expect(documented('/users/{id}/resend-invitation')).toEqual(['502', '503']);
+    // Quote emails record a provider failure on the delivery (status `failed`) instead of answering 502.
+    expect(documented('/quotes/{id}/deliveries')).toEqual(['503']);
+    expect(documented('/quotes/{id}/deliveries/{deliveryId}/retry')).toEqual(['503']);
+    expect(paths['/users'].post.responses['502'].description).toMatch(/^`EMAIL_FAILED`/);
+    expect(paths['/users'].post.responses['503'].description).toMatch(/^`EMAIL_UNAVAILABLE`/);
+  });
+
   it('saves nothing if the invitation email cannot be sent, so the admin can simply retry', async () => {
     const failing: Mailer = { enabled: true, send: async () => { throw new Error('SMTP down'); } };
     const broken = await setupTestApp({}, { mailer: failing });

@@ -9,7 +9,7 @@ import { badRequest, conflict, emailUnavailable, invalidLink, notFound, unauthor
 import { canonicalTimeZone, isValidTimeZone } from '../lib/dates';
 import { passwordResetEmail } from '../lib/emails';
 import type { Mailer } from '../lib/mailer';
-import { doc } from '../lib/openapi';
+import { doc, EMAIL_UNAVAILABLE } from '../lib/openapi';
 import { hashPassword, verifyPassword } from '../lib/password';
 import { ROLE_PERMISSIONS } from '../lib/permissions';
 import { z } from '../lib/zod';
@@ -95,7 +95,7 @@ const MeResponse = z
 doc({ method: 'post', path: '/auth/register', tag: 'Auth', summary: 'Create an organization and its first admin user', public: true, body: RegisterBody, response: AuthResponse, status: 201 });
 doc({ method: 'post', path: '/auth/login', tag: 'Auth', summary: 'Exchange credentials for a JWT', public: true, body: LoginBody, response: AuthResponse });
 doc({ method: 'post', path: '/auth/change-password', tag: 'Auth', summary: 'Change your password. Signs out every other session and returns a fresh token', body: ChangePasswordBody, response: AuthResponse });
-doc({ method: 'post', path: '/auth/forgot-password', tag: 'Auth', summary: 'Email a password reset link. Always answers 202, whether or not the email belongs to an account', public: true, body: ForgotPasswordBody, response: Accepted, status: 202 });
+doc({ method: 'post', path: '/auth/forgot-password', tag: 'Auth', summary: 'Email a password reset link. Always answers 202, whether or not the email belongs to an account', public: true, body: ForgotPasswordBody, response: Accepted, status: 202, errors: { 503: EMAIL_UNAVAILABLE } });
 doc({ method: 'post', path: '/auth/reset-password', tag: 'Auth', summary: 'Set a new password with an emailed reset link. Signs out every session and returns a fresh token', public: true, body: ResetPasswordBody, response: AuthResponse });
 doc({ method: 'post', path: '/auth/invitations/lookup', tag: 'Auth', summary: 'Show who an emailed invitation is for, without using it', public: true, body: InvitationLookupBody, response: Invitation });
 doc({ method: 'post', path: '/auth/invitations/accept', tag: 'Auth', summary: 'Accept an emailed invitation by choosing a password; returns a token', public: true, body: AcceptInvitationBody, response: AuthResponse });

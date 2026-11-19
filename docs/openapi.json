@@ -1844,6 +1844,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "`EMAIL_UNAVAILABLE`: email is not configured on this server (MAIL_TRANSPORT=none), so nothing was sent or saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -4529,6 +4539,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "`EMAIL_UNAVAILABLE`: email is not configured on this server (MAIL_TRANSPORT=none), so nothing was sent or saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       },
@@ -4714,6 +4734,16 @@
           },
           "409": {
             "description": "Conflict or invalid state transition",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`EMAIL_UNAVAILABLE`: email is not configured on this server (MAIL_TRANSPORT=none), so nothing was sent or saved",
             "content": {
               "application/json": {
                 "schema": {
@@ -5129,6 +5159,26 @@
                 }
               }
             }
+          },
+          "502": {
+            "description": "`EMAIL_FAILED`: the mail provider did not accept the email, so nothing was saved; the request can be retried",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`EMAIL_UNAVAILABLE`: email is not configured on this server (MAIL_TRANSPORT=none), so nothing was sent or saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -5209,6 +5259,26 @@
           },
           "409": {
             "description": "Conflict or invalid state transition",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "`EMAIL_FAILED`: the mail provider did not accept the email, so nothing was saved; the request can be retried",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`EMAIL_UNAVAILABLE`: email is not configured on this server (MAIL_TRANSPORT=none), so nothing was sent or saved",
             "content": {
               "application/json": {
                 "schema": {

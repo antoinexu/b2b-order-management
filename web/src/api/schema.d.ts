@@ -273,6 +273,15 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
+                /** @description `EMAIL_UNAVAILABLE`: email is not configured on this server (MAIL_TRANSPORT=none), so nothing was sent or saved */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
             };
         };
         delete?: never;
@@ -2682,6 +2691,15 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
+                /** @description `EMAIL_UNAVAILABLE`: email is not configured on this server (MAIL_TRANSPORT=none), so nothing was sent or saved */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
             };
         };
         delete?: never;
@@ -2762,6 +2780,15 @@ export interface paths {
                 };
                 /** @description Conflict or invalid state transition */
                 409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description `EMAIL_UNAVAILABLE`: email is not configured on this server (MAIL_TRANSPORT=none), so nothing was sent or saved */
+                503: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -3145,6 +3172,24 @@ export interface paths {
                         "application/json": components["schemas"]["Error"];
                     };
                 };
+                /** @description `EMAIL_FAILED`: the mail provider did not accept the email, so nothing was saved; the request can be retried */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description `EMAIL_UNAVAILABLE`: email is not configured on this server (MAIL_TRANSPORT=none), so nothing was sent or saved */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
             };
         };
         delete?: never;
@@ -3224,6 +3269,24 @@ export interface paths {
                 };
                 /** @description Conflict or invalid state transition */
                 409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description `EMAIL_FAILED`: the mail provider did not accept the email, so nothing was saved; the request can be retried */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description `EMAIL_UNAVAILABLE`: email is not configured on this server (MAIL_TRANSPORT=none), so nothing was sent or saved */
+                503: {
                     headers: {
                         [name: string]: unknown;
                     };

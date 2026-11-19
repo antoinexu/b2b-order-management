@@ -6,7 +6,7 @@ import { organizations, users, USER_ROLES } from '../db/schema';
 import { invitationEmail } from '../lib/emails';
 import { badRequest, conflict, emailFailed, emailUnavailable, forbidden, invalidState, notFound, unauthorized } from '../lib/errors';
 import type { Mailer } from '../lib/mailer';
-import { doc } from '../lib/openapi';
+import { doc, EMAIL_FAILED, EMAIL_UNAVAILABLE } from '../lib/openapi';
 import { hashPassword } from '../lib/password';
 import { hasPermission } from '../lib/permissions';
 import { IdParams, paginated, PaginationQuery, z } from '../lib/zod';
@@ -32,8 +32,8 @@ const UpdateUserBody = z
 
 const T = 'Users';
 doc({ method: 'get', path: '/users', tag: T, summary: 'List users in the organization', permission: 'users:read', query: PaginationQuery, response: paginated(PublicUser) });
-doc({ method: 'post', path: '/users', tag: T, summary: 'Add a user with a role: email them an invitation, or set an initial password', permission: 'users:write', body: CreateUserBody, response: PublicUser, status: 201 });
-doc({ method: 'post', path: '/users/{id}/resend-invitation', tag: T, summary: 'Email a new invitation link to a user who has not accepted yet; earlier links stop working', permission: 'users:write', params: IdParams, response: PublicUser });
+doc({ method: 'post', path: '/users', tag: T, summary: 'Add a user with a role: email them an invitation, or set an initial password', permission: 'users:write', body: CreateUserBody, response: PublicUser, status: 201, errors: { 502: EMAIL_FAILED, 503: EMAIL_UNAVAILABLE } });
+doc({ method: 'post', path: '/users/{id}/resend-invitation', tag: T, summary: 'Email a new invitation link to a user who has not accepted yet; earlier links stop working', permission: 'users:write', params: IdParams, response: PublicUser, errors: { 502: EMAIL_FAILED, 503: EMAIL_UNAVAILABLE } });
 doc({ method: 'patch', path: '/users/{id}', tag: T, summary: "Update a user's name or role, preserving at least one active admin", permission: 'users:write', params: IdParams, body: UpdateUserBody, response: PublicUser });
 doc({ method: 'delete', path: '/users/{id}', tag: T, summary: 'Deactivate a user, preserving business history, their email and at least one active admin. For a pending invitation, cancels it and frees the email', permission: 'users:write', params: IdParams, status: 204 });
 

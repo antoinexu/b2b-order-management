@@ -34,6 +34,10 @@ interface DocOptions {
   status?: 200 | 201 | 202 | 204;
 }
 
+/** Shared descriptions for endpoint-specific errors (see DocOptions.errors). */
+export const EMAIL_UNAVAILABLE = '`EMAIL_UNAVAILABLE`: email is not configured on this server (MAIL_TRANSPORT=none), so nothing was sent or saved';
+export const EMAIL_FAILED = '`EMAIL_FAILED`: the mail provider did not accept the email, so nothing was saved; the request can be retried';
+
 /** Registers one endpoint in the OpenAPI document with the standard error responses. */
 export function doc(o: DocOptions) {
   const status = o.status ?? 200;
