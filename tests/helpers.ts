@@ -24,7 +24,7 @@ export async function setupTestApp(overrides: Partial<Config> = {}, options: { m
     config: { ...config, NODE_ENV: 'test', AUTH_RATE_LIMIT_MAX: 10_000, APP_URL: 'http://app.test', ...overrides },
     mailer: options.mailer ?? mail,
   });
-  return { app, db, outbox: mail.outbox, close: () => client.close() };
+  return { app, db, mail, outbox: mail.outbox, close: () => client.close() };
 }
 
 /** Extracts the token from the last link in an email, e.g. `.../reset-password#token=abc`. */

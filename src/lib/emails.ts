@@ -38,3 +38,41 @@ export function passwordResetEmail(input: { to: string; name: string; url: strin
     html: layout([intro, request], { label: 'Reset password', url: input.url }, footer),
   };
 }
+
+/**
+ * Stands in for the customer's link in a stored email body. Each delivery attempt mints a new link token
+ * (only its hash is stored), so the link is filled in at send time.
+ */
+export const QUOTE_LINK_PLACEHOLDER = 'https://quote-link.invalid/placeholder';
+
+export function quoteEmail(input: {
+  recipientName: string | null; organizationName: string; senderName: string; quoteNumber: string;
+  total: string; validUntil: string | null; message: string | null;
+}): Pick<OutgoingEmail, 'subject' | 'text' | 'html'> {
+  const greeting = input.recipientName ? `Hi ${input.recipientName},` : 'Hello,';
+  const intro = `${input.senderName} at ${input.organizationName} sent you quote ${input.quoteNumber} for ${input.total}. The PDF is attached.`;
+  const validity = input.validUntil ? `It is valid through ${input.validUntil}.` : 'It has no expiry date.';
+  const action = 'You can review it and accept or decline online:';
+  const footer = `Reply to this email to reach ${input.senderName} directly.`;
+  const paragraphs = [greeting, intro, ...(input.message ? [input.message] : []), `${validity} ${action}`];
+  return {
+    subject: `Quote ${input.quoteNumber} from ${input.organizationName}`,
+    text: `${paragraphs.join('\n\n')}\n${QUOTE_LINK_PLACEHOLDER}\n\n${footer}\n`,
+    html: layout(paragraphs, { label: 'Review quote', url: QUOTE_LINK_PLACEHOLDER }, footer),
+  };
+}
+
+export function quoteResponseEmail(input: {
+  to: string; quoteNumber: string; customerName: string; decision: 'accepted' | 'rejected'; respondent: string;
+  note: string | null; url: string;
+}): OutgoingEmail {
+  const headline = `${input.respondent} ${input.decision} quote ${input.quoteNumber} for ${input.customerName}.`;
+  const paragraphs = [headline, ...(input.note ? [`Their note: "${input.note}"`] : [])];
+  const next = input.decision === 'accepted' ? 'You can now convert it into an order.' : 'You can follow up with them or prepare a new quote.';
+  return {
+    to: input.to,
+    subject: `Quote ${input.quoteNumber} ${input.decision} by ${input.customerName}`,
+    text: `${paragraphs.join('\n\n')}\n\n${next}\n${input.url}\n`,
+    html: layout(paragraphs, { label: 'Open quote', url: input.url }, next),
+  };
+}

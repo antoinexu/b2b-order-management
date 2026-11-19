@@ -1,5 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowRightLeft, Check, Download, Pencil, Plus, Send, Trash2, X } from 'lucide-react';
+import { ArrowRightLeft, Check, Download, Mail, Pencil, Plus, Send, Trash2, X } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { toast } from 'sonner';
@@ -22,7 +22,9 @@ import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { saveFile } from '@/lib/download';
 import { formatDate, formatMoney } from '@/lib/format';
+import { EmailQuoteDialog, QuoteEmailsCard } from '@/components/QuoteEmails';
 
 const PAGE_SIZE = 20;
 
@@ -159,25 +161,21 @@ const HISTORY_LABELS: Record<QuoteStatus, string> = {
   rejected: 'Marked as rejected',
   expired: 'Expired at acceptance',
 };
+const CUSTOMER_LABELS: Partial<Record<QuoteStatus, string>> = {
+  accepted: 'Accepted by the customer online',
+  rejected: 'Declined by the customer online',
+  expired: 'Expired when the customer tried to respond',
+};
 
 /** Recorded changes plus, for a sent quote that lapsed on its own, the derived expiry (never stored as an event). */
 function quoteTimeline(q: Quote, timeZone: string): TimelineEntry[] {
-  const entries: TimelineEntry[] = q.history.map((h) => ({ label: HISTORY_LABELS[h.toStatus], at: h.createdAt, by: h.changedByName }));
+  const entries: TimelineEntry[] = q.history.map((h) => h.changedByCustomer
+    ? { label: CUSTOMER_LABELS[h.toStatus] ?? HISTORY_LABELS[h.toStatus], at: h.createdAt, by: h.changedByCustomer, detail: h.note }
+    : { label: HISTORY_LABELS[h.toStatus], at: h.createdAt, by: h.changedByName ?? undefined, detail: h.note });
   if (q.status === 'expired' && q.history.at(-1)?.toStatus !== 'expired') {
     entries.push({ label: 'Validity ended', detail: `End of ${formatDate(q.validUntil)} (${timeZone})` });
   }
   return entries;
-}
-
-/** Hands a downloaded file to the browser's save flow. */
-function saveFile(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  link.click();
-  // Revoke after the click has been handled, so the download isn't cut off.
-  setTimeout(() => URL.revokeObjectURL(url), 1_000);
 }
 
 export function QuoteDetailPage() {
@@ -187,6 +185,7 @@ export function QuoteDetailPage() {
   const { api, can, me } = useAuth();
   const quote = useQuote(id);
   const [converting, setConverting] = useState(false);
+  const [emailing, setEmailing] = useState(false);
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['quotes'] });
   const action = useMutation({
@@ -224,12 +223,16 @@ export function QuoteDetailPage() {
             <Button variant="outline" disabled={downloadPdf.isPending} onClick={() => downloadPdf.mutate()}>
               <Download /> {downloadPdf.isPending ? 'Preparing…' : 'PDF'}
             </Button>
+            {canWrite && (q.status === 'draft' || q.status === 'sent') && (
+              <Button variant={q.status === 'draft' ? 'default' : 'outline'} onClick={() => setEmailing(true)}><Mail /> Email to customer</Button>
+            )}
             {canWrite && q.status === 'draft' && (
               <>
                 <ConfirmDialog trigger={<Button variant="ghost" disabled={remove.isPending}><Trash2 /> Delete</Button>}
                   title="Delete this draft?" description="This can't be undone." confirmLabel="Delete draft" destructive onConfirm={() => remove.mutate()} />
                 <Link to={`/quotes/${id}/edit`} className={buttonVariants({ variant: "outline" })}><Pencil /> Edit</Link>
-                <Button disabled={action.isPending} onClick={() => action.mutate('send')}><Send /> Mark as sent</Button>
+                <Button variant="outline" disabled={action.isPending} title="For quotes sent some other way"
+                  onClick={() => action.mutate('send')}><Send /> Mark as sent</Button>
               </>
             )}
             {canWrite && q.status === 'sent' && (
@@ -247,7 +250,7 @@ export function QuoteDetailPage() {
 
       <div className="grid gap-6 lg:grid-cols-[1fr_16rem]">
         <LineItemsTable items={q.items} currency={q.currency} subtotalCents={q.subtotalCents} taxCents={q.taxCents} taxRateBps={q.taxRateBps} totalCents={q.totalCents} />
-        <div className="grid content-start gap-6">
+        <div className="grid min-w-0 content-start gap-6">
           <Card>
             <CardContent className="grid gap-3 text-sm">
               <Detail label="Valid until" value={formatDate(q.validUntil)} />
@@ -256,6 +259,7 @@ export function QuoteDetailPage() {
               {q.notes && <Detail label="Notes" value={<span className="whitespace-pre-wrap">{q.notes}</span>} />}
             </CardContent>
           </Card>
+          <QuoteEmailsCard quote={q} />
           <Card>
             <CardHeader><CardTitle>History</CardTitle></CardHeader>
             <CardContent>
@@ -266,6 +270,7 @@ export function QuoteDetailPage() {
       </div>
 
       {converting && <ConvertDialog quoteId={id} onClose={() => setConverting(false)} />}
+      {emailing && <EmailQuoteDialog quote={q} onClose={() => setEmailing(false)} />}
     </>
   );
 }

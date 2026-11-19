@@ -16,6 +16,8 @@ import { customersRouter } from './modules/customers';
 import { ordersRouter } from './modules/orders';
 import { organizationRouter } from './modules/organization';
 import { productsRouter } from './modules/products';
+import { quoteDeliveriesRouter } from './modules/quote-deliveries';
+import { quoteResponsesRouter } from './modules/quote-responses';
 import { quotesRouter } from './modules/quotes';
 import { usersRouter } from './modules/users';
 
@@ -56,6 +58,9 @@ export function createApp({ db, config, mailer: providedMailer }: { db: DB; conf
   api.use('/customers', requireAuth, customersRouter(db));
   api.use('/products', requireAuth, productsRouter(db));
   api.use('/quotes', requireAuth, quotesRouter(db));
+  api.use('/quotes', requireAuth, quoteDeliveriesRouter(db, config, mailer));
+  // Customers reach these through emailed links, without an account.
+  api.use('/public', quoteResponsesRouter(db, config, mailer));
   api.use('/orders', requireAuth, ordersRouter(db));
   app.use('/api/v1', api);
 

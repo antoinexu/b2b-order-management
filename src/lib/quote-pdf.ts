@@ -83,7 +83,7 @@ const formatPercent = (bps: number) => `${Number((bps / 100).toFixed(2))}%`;
 const formatDateTime = (date: Date, timeZone: string) =>
   new Intl.DateTimeFormat('en-US', { timeZone, year: 'numeric', month: 'short', day: 'numeric' }).format(date);
 /** `validUntil` is a calendar date, not an instant, so it is formatted without any time zone shift. */
-const formatCalendarDate = (isoDate: string) =>
+export const formatCalendarDate = (isoDate: string) =>
   new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', year: 'numeric', month: 'short', day: 'numeric' }).format(new Date(`${isoDate}T00:00:00Z`));
 
 const WATERMARKS: Record<string, string> = { draft: 'DRAFT', expired: 'EXPIRED', rejected: 'REJECTED' };

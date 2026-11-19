@@ -14,6 +14,8 @@ export type Order = Schemas['Order'];
 export type OrderSummary = Schemas['OrderSummary'];
 export type QuoteStatusChange = Schemas['QuoteStatusChange'];
 export type Organization = Schemas['Organization'];
+export type QuoteDelivery = Schemas['QuoteDelivery'];
+export type PublicQuote = Schemas['PublicQuote'];
 
 export type UserRole = User['role'];
 export type QuoteStatus = Quote['status'];

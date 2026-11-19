@@ -1,7 +1,7 @@
 import { and, asc, count, desc, eq, gte, isNull, lt, or, sql, type SQL } from 'drizzle-orm';
 import { Router } from 'express';
 import type { DB } from '../db/client';
-import { customers, orders, organizations, quoteItems, quotes, quoteStatusHistory, users, QUOTE_STATUSES, type QuoteStatus } from '../db/schema';
+import { customers, orders, organizations, quoteDeliveries, quoteItems, quotes, quoteStatusHistory, users, QUOTE_STATUSES, type QuoteStatus } from '../db/schema';
 import { todayIn } from '../lib/dates';
 import { invalidState, notFound } from '../lib/errors';
 import { doc } from '../lib/openapi';
@@ -65,7 +65,15 @@ const QuoteSummary = z
   .openapi('QuoteSummary');
 
 const QuoteStatusChange = z
-  .object({ fromStatus: Status.nullable(), toStatus: Status, changedById: z.uuid(), changedByName: z.string(), createdAt: z.date() })
+  .object({
+    fromStatus: Status.nullable(),
+    toStatus: Status,
+    changedById: z.uuid().nullable().openapi({ description: 'The staff member, or null when the customer responded online' }),
+    changedByName: z.string().nullable(),
+    changedByCustomer: z.string().nullable().openapi({ description: 'The customer who responded online, as "Name <email>"' }),
+    note: z.string().nullable(),
+    createdAt: z.date(),
+  })
   .openapi('QuoteStatusChange');
 
 const Quote = QuoteSummary.extend({
@@ -80,8 +88,8 @@ doc({ method: 'get', path: '/quotes', tag: T, summary: "List quotes (filter by s
 doc({ method: 'post', path: '/quotes', tag: T, summary: 'Create a draft quote', permission: 'quotes:write', body: CreateQuoteBody, response: Quote, status: 201 });
 doc({ method: 'get', path: '/quotes/{id}', tag: T, summary: 'Get a quote with line items', permission: 'quotes:read', params: IdParams, response: Quote });
 doc({ method: 'get', path: '/quotes/{id}/pdf', tag: T, summary: 'Download the quote as a PDF. Drafts, expired and rejected quotes carry a watermark', permission: 'quotes:read', params: IdParams, file: 'application/pdf' });
-doc({ method: 'patch', path: '/quotes/{id}', tag: T, summary: 'Edit a draft quote', permission: 'quotes:write', params: IdParams, body: UpdateQuoteBody, response: Quote });
-doc({ method: 'delete', path: '/quotes/{id}', tag: T, summary: 'Delete a draft quote', permission: 'quotes:write', params: IdParams, status: 204 });
+doc({ method: 'patch', path: '/quotes/{id}', tag: T, summary: 'Edit a draft quote (not while it is being emailed)', permission: 'quotes:write', params: IdParams, body: UpdateQuoteBody, response: Quote });
+doc({ method: 'delete', path: '/quotes/{id}', tag: T, summary: 'Delete a draft quote (not while it is being emailed)', permission: 'quotes:write', params: IdParams, status: 204 });
 doc({ method: 'post', path: '/quotes/{id}/send', tag: T, summary: 'Mark a draft quote as sent to the customer', permission: 'quotes:write', params: IdParams, response: Quote });
 doc({ method: 'post', path: '/quotes/{id}/accept', tag: T, summary: 'Record customer acceptance (fails and expires the quote if past validUntil)', permission: 'quotes:write', params: IdParams, response: Quote });
 doc({ method: 'post', path: '/quotes/{id}/reject', tag: T, summary: 'Record customer rejection (not allowed once the quote is past validUntil)', permission: 'quotes:write', params: IdParams, response: Quote });
@@ -92,14 +100,16 @@ const stripQuote = ({ organizationId: _o, ...rest }: typeof quotes.$inferSelect)
  * A quote is valid through the end of its `validUntil` day in the organization's time zone.
  * `today` is the current calendar date in that zone (see `todayIn`).
  */
-const isPastValidity = (validUntil: string | null, today: string) => !!validUntil && validUntil < today;
-const todayFor = (ctx: AuthContext) => todayIn(ctx.timezone);
+export const isPastValidity = (validUntil: string | null, today: string) => !!validUntil && validUntil < today;
+/** The organization a quote is read for: its id, and its time zone, which decides expiry. */
+export type QuoteScope = Pick<AuthContext, 'organizationId' | 'timezone'>;
+export const todayFor = (scope: QuoteScope) => todayIn(scope.timezone);
 
 /**
  * A sent quote past its validUntil date is expired, even if nobody has tried to accept it yet.
  * Reads report the effective status, so lists, filters and dashboards never show stale "sent" quotes.
  */
-const effectiveStatus = (quote: { status: QuoteStatus; validUntil: string | null }, today: string): QuoteStatus =>
+export const effectiveStatus = (quote: { status: QuoteStatus; validUntil: string | null }, today: string): QuoteStatus =>
   quote.status === 'sent' && isPastValidity(quote.validUntil, today) ? 'expired' : quote.status;
 
 function statusFilter(status: QuoteStatus, today: string): SQL | undefined {
@@ -108,7 +118,7 @@ function statusFilter(status: QuoteStatus, today: string): SQL | undefined {
   return eq(quotes.status, status);
 }
 
-async function loadQuote(db: DB | Tx, ctx: AuthContext, id: string) {
+export async function loadQuote(db: DB | Tx, ctx: QuoteScope, id: string) {
   const row = await db.query.quotes.findFirst({
     where: and(eq(quotes.id, id), eq(quotes.organizationId, ctx.organizationId)),
     with: {
@@ -116,7 +126,7 @@ async function loadQuote(db: DB | Tx, ctx: AuthContext, id: string) {
       customer: { columns: { companyName: true } },
       history: {
         orderBy: [asc(quoteStatusHistory.createdAt), asc(quoteStatusHistory.id)],
-        columns: { fromStatus: true, toStatus: true, changedById: true, createdAt: true },
+        columns: { fromStatus: true, toStatus: true, changedById: true, changedByCustomer: true, note: true, createdAt: true },
         with: { changedBy: { columns: { name: true } } },
       },
     },
@@ -127,12 +137,12 @@ async function loadQuote(db: DB | Tx, ctx: AuthContext, id: string) {
     ...rest,
     status: effectiveStatus(rest, todayFor(ctx)),
     customerName: customer.companyName,
-    history: history.map(({ changedBy, ...h }) => ({ ...h, changedByName: changedBy.name })),
+    history: history.map(({ changedBy, ...h }) => ({ ...h, changedByName: changedBy?.name ?? null })),
   };
 }
 
 /** Everything the quote PDF shows, read in one place so the download and the emailed copy are identical. */
-export async function quotePdfData(db: DB | Tx, ctx: AuthContext, id: string): Promise<QuotePdfData> {
+export async function quotePdfData(db: DB | Tx, ctx: QuoteScope, id: string): Promise<QuotePdfData> {
   const quote = await loadQuote(db, ctx, id);
   const [[customer], [organization], [creator]] = await Promise.all([
     db.select().from(customers).where(eq(customers.id, quote.customerId)),
@@ -142,14 +152,36 @@ export async function quotePdfData(db: DB | Tx, ctx: AuthContext, id: string): P
   return { organization: organization!, quote, customer: customer!, items: quote.items, preparedBy: creator! };
 }
 
+/** Who changed a quote's status: a staff member's id, or a customer responding through an emailed link. */
+export type StatusActor = string | { customer: string; note: string | null };
+
 /** Appends an audit entry for a status change. Must run in the same transaction as the change. */
-async function recordStatus(tx: Tx, quoteId: string, from: QuoteStatus | null, to: QuoteStatus, changedById: string) {
+export async function recordStatus(tx: Tx, quoteId: string, from: QuoteStatus | null, to: QuoteStatus, actor: StatusActor) {
+  const who = typeof actor === 'string'
+    ? { changedById: actor }
+    : { changedByCustomer: actor.customer, note: actor.note };
   // clock_timestamp(), not now(): now() is the transaction start, which can predate a change made while waiting for a lock.
-  await tx.insert(quoteStatusHistory).values({ quoteId, fromStatus: from, toStatus: to, changedById, createdAt: sql`clock_timestamp()` });
+  await tx.insert(quoteStatusHistory).values({ quoteId, fromStatus: from, toStatus: to, ...who, createdAt: sql`clock_timestamp()` });
+}
+
+/** An attempt still in `sending` after this long is presumed dead (e.g. the process crashed) and may be retried. */
+export const SENDING_LEASE_MS = 5 * 60_000;
+
+/**
+ * Refuses changes while an email of this quote is in flight, so a customer never receives something other than
+ * what the quote says. Callers hold the quote's row lock, which delivery attempts also take before sending.
+ */
+export async function assertNotBeingEmailed(tx: Tx, quoteId: string) {
+  const [inFlight] = await tx.select({ id: quoteDeliveries.id }).from(quoteDeliveries).where(and(
+    eq(quoteDeliveries.quoteId, quoteId),
+    eq(quoteDeliveries.status, 'sending'),
+    gte(quoteDeliveries.lastAttemptAt, sql`now() - make_interval(secs => ${SENDING_LEASE_MS / 1000})`),
+  )).limit(1);
+  if (inFlight) throw invalidState('This quote is being emailed right now. Try again in a moment.');
 }
 
 /** Locks the quote row for the rest of the transaction and returns it. */
-async function lockQuote(tx: Tx, organizationId: string, id: string) {
+export async function lockQuote(tx: Tx, organizationId: string, id: string) {
   const [row] = await tx
     .select()
     .from(quotes)
@@ -159,7 +191,7 @@ async function lockQuote(tx: Tx, organizationId: string, id: string) {
   return row;
 }
 
-function requireStatus(current: QuoteStatus, allowed: QuoteStatus, action: string) {
+export function requireStatus(current: QuoteStatus, allowed: QuoteStatus, action: string) {
   if (current !== allowed) throw invalidState(`Cannot ${action} a quote in '${current}' status (must be '${allowed}')`);
 }
 
@@ -244,6 +276,7 @@ export function quotesRouter(db: DB) {
     const quote = await db.transaction(async (tx) => {
       const current = await lockQuote(tx, organizationId, id);
       requireStatus(current.status, 'draft', 'edit');
+      await assertNotBeingEmailed(tx, id);
       if (fields.customerId) await assertCustomer(tx, organizationId, fields.customerId);
 
       // Agreed prices hold only for the customer and currency they were given for.
@@ -275,6 +308,8 @@ export function quotesRouter(db: DB) {
       } else if (Object.keys(fields).length > 0) {
         await tx.update(quotes).set(fields).where(eq(quotes.id, id));
       }
+      // Emails prepared from the previous version can no longer be sent (see quote deliveries).
+      await tx.update(quotes).set({ revision: sql`${quotes.revision} + 1` }).where(eq(quotes.id, id));
       return loadQuote(tx, ctx, id);
     });
     res.json(quote);
@@ -286,6 +321,7 @@ export function quotesRouter(db: DB) {
     await db.transaction(async (tx) => {
       const current = await lockQuote(tx, organizationId, id);
       requireStatus(current.status, 'draft', 'delete');
+      await assertNotBeingEmailed(tx, id);
       await tx.delete(quotes).where(eq(quotes.id, id));
     });
     res.status(204).end();

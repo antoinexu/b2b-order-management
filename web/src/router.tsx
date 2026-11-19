@@ -23,6 +23,7 @@ const OrdersPage = page(() => import('@/pages/OrdersPages'), 'OrdersPage');
 const OrderNewPage = page(() => import('@/pages/OrdersPages'), 'OrderNewPage');
 const OrderDetailPage = page(() => import('@/pages/OrdersPages'), 'OrderDetailPage');
 const UsersPage = page(() => import('@/pages/UsersPage'), 'UsersPage');
+const QuoteResponsePage = page(() => import('@/pages/QuoteResponsePage'), 'QuoteResponsePage');
 
 function PageFallback() {
   return <div className="space-y-3" aria-busy="true"><Skeleton className="h-8 w-48" /><Skeleton className="h-64 w-full" /></div>;
@@ -83,6 +84,8 @@ export const router = createBrowserRouter([
   { path: '/forgot-password', element: <ForgotPasswordPage /> },
   { path: '/reset-password', element: <ResetPasswordPage /> },
   { path: '/accept-invitation', element: <AcceptInvitationPage /> },
+  // Customers open this from an emailed quote; it works whether or not this browser is signed in.
+  { path: '/quote-response', element: <Suspense fallback={<PageFallback />}><QuoteResponsePage /></Suspense> },
   {
     element: <RequireAuth />,
     children: [

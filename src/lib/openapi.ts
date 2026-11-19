@@ -24,6 +24,7 @@ interface DocOptions {
   public?: boolean;
   params?: z.ZodObject;
   query?: z.ZodObject;
+  headers?: z.ZodObject;
   body?: z.ZodType;
   response?: z.ZodType;
   /** The success response is a file of this type instead of JSON. */
@@ -44,6 +45,7 @@ export function doc(o: DocOptions) {
     request: {
       params: o.params,
       query: o.query,
+      headers: o.headers,
       body: o.body ? { content: { 'application/json': { schema: o.body } }, required: true } : undefined,
     },
     responses: {

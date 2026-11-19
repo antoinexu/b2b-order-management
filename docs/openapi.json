@@ -1081,10 +1081,22 @@
           },
           "changedById": {
             "type": "string",
-            "format": "uuid"
+            "nullable": true,
+            "format": "uuid",
+            "description": "The staff member, or null when the customer responded online"
           },
           "changedByName": {
-            "type": "string"
+            "type": "string",
+            "nullable": true
+          },
+          "changedByCustomer": {
+            "type": "string",
+            "nullable": true,
+            "description": "The customer who responded online, as \"Name <email>\""
+          },
+          "note": {
+            "type": "string",
+            "nullable": true
           },
           "createdAt": {
             "type": "string",
@@ -1096,6 +1108,8 @@
           "toStatus",
           "changedById",
           "changedByName",
+          "changedByCustomer",
+          "note",
           "createdAt"
         ]
       },
@@ -1191,6 +1205,326 @@
             "maxLength": 100
           }
         }
+      },
+      "QuoteDelivery": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "quoteId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "sending",
+              "sent",
+              "failed"
+            ],
+            "description": "`sending` until the mail provider accepts the email (`sent`) or refuses it (`failed`, see `lastError`)"
+          },
+          "recipientEmail": {
+            "type": "string"
+          },
+          "recipientName": {
+            "type": "string",
+            "nullable": true
+          },
+          "message": {
+            "type": "string",
+            "nullable": true
+          },
+          "subject": {
+            "type": "string"
+          },
+          "sentById": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sentByName": {
+            "type": "string"
+          },
+          "attempts": {
+            "type": "integer"
+          },
+          "lastAttemptAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "lastError": {
+            "type": "string",
+            "nullable": true
+          },
+          "sentAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "retryable": {
+            "type": "boolean",
+            "description": "Whether POST .../retry may be used now"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "quoteId",
+          "status",
+          "recipientEmail",
+          "recipientName",
+          "message",
+          "subject",
+          "sentById",
+          "sentByName",
+          "attempts",
+          "lastAttemptAt",
+          "lastError",
+          "sentAt",
+          "retryable",
+          "createdAt"
+        ]
+      },
+      "SendQuoteRequest": {
+        "type": "object",
+        "properties": {
+          "recipientEmail": {
+            "type": "string",
+            "format": "email",
+            "description": "Defaults to the customer's email"
+          },
+          "recipientName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "Defaults to the customer's contact name when sending to the customer's email"
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000,
+            "description": "A personal note shown above the quote summary"
+          }
+        }
+      },
+      "PublicQuote": {
+        "type": "object",
+        "properties": {
+          "organizationName": {
+            "type": "string"
+          },
+          "customerName": {
+            "type": "string"
+          },
+          "recipientEmail": {
+            "type": "string"
+          },
+          "preparedBy": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "email": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "email"
+            ]
+          },
+          "sentAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "quote": {
+            "type": "object",
+            "properties": {
+              "number": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "draft",
+                  "sent",
+                  "accepted",
+                  "rejected",
+                  "expired"
+                ]
+              },
+              "validUntil": {
+                "type": "string",
+                "nullable": true
+              },
+              "currency": {
+                "type": "string"
+              },
+              "notes": {
+                "type": "string",
+                "nullable": true
+              },
+              "taxRateBps": {
+                "type": "integer"
+              },
+              "subtotalCents": {
+                "type": "integer"
+              },
+              "taxCents": {
+                "type": "integer"
+              },
+              "totalCents": {
+                "type": "integer"
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "description": {
+                      "type": "string"
+                    },
+                    "quantity": {
+                      "type": "integer"
+                    },
+                    "unitPriceCents": {
+                      "type": "integer"
+                    },
+                    "discountBps": {
+                      "type": "integer"
+                    },
+                    "lineTotalCents": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "description",
+                    "quantity",
+                    "unitPriceCents",
+                    "discountBps",
+                    "lineTotalCents"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "number",
+              "status",
+              "validUntil",
+              "currency",
+              "notes",
+              "taxRateBps",
+              "subtotalCents",
+              "taxCents",
+              "totalCents",
+              "items"
+            ]
+          },
+          "canRespond": {
+            "type": "boolean",
+            "description": "True while the quote awaits a response and is within its validity date"
+          },
+          "response": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "accepted",
+                  "rejected",
+                  "expired"
+                ]
+              },
+              "at": {
+                "type": "string",
+                "nullable": true,
+                "format": "date-time"
+              },
+              "by": {
+                "type": "string",
+                "nullable": true
+              },
+              "note": {
+                "type": "string",
+                "nullable": true
+              }
+            },
+            "required": [
+              "status",
+              "at",
+              "by",
+              "note"
+            ],
+            "description": "The outcome, once the quote was accepted, rejected or expired"
+          }
+        },
+        "required": [
+          "organizationName",
+          "customerName",
+          "recipientEmail",
+          "preparedBy",
+          "sentAt",
+          "quote",
+          "canRespond",
+          "response"
+        ]
+      },
+      "QuoteLinkRequest": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "minLength": 32,
+            "maxLength": 128,
+            "description": "Token from the emailed link"
+          }
+        },
+        "required": [
+          "token"
+        ]
+      },
+      "QuoteResponseRequest": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "minLength": 32,
+            "maxLength": 128,
+            "description": "Token from the emailed link"
+          },
+          "decision": {
+            "type": "string",
+            "enum": [
+              "accept",
+              "reject"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "Who is responding for the customer"
+          },
+          "note": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000,
+            "description": "E.g. why the quote is declined"
+          }
+        },
+        "required": [
+          "token",
+          "decision",
+          "name"
+        ]
       },
       "CreateUserRequest": {
         "type": "object",
@@ -3469,7 +3803,7 @@
         "tags": [
           "Quotes"
         ],
-        "summary": "Edit a draft quote",
+        "summary": "Edit a draft quote (not while it is being emailed)",
         "description": "Requires permission: `quotes:write`",
         "security": [
           {
@@ -3564,7 +3898,7 @@
         "tags": [
           "Quotes"
         ],
-        "summary": "Delete a draft quote",
+        "summary": "Delete a draft quote (not while it is being emailed)",
         "description": "Requires permission: `quotes:write`",
         "security": [
           {
@@ -4074,6 +4408,491 @@
           },
           "409": {
             "description": "Conflict or invalid state transition",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/quotes/{id}/deliveries": {
+      "post": {
+        "tags": [
+          "Quote emails"
+        ],
+        "summary": "Email the quote's PDF and a link to accept or decline online. A draft becomes sent once the email is accepted by the mail provider. Answers 201 for a new delivery (check `status`: `sent` or `failed`) and 200 when replaying an Idempotency-Key",
+        "description": "Requires permission: `quotes:write`",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 200,
+              "description": "A unique value per send (e.g. a UUID). Repeating a request with the same key returns the original delivery instead of emailing again."
+            },
+            "required": true,
+            "description": "A unique value per send (e.g. a UUID). Repeating a request with the same key returns the original delivery instead of emailing again.",
+            "name": "idempotency-key",
+            "in": "header"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendQuoteRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuoteDelivery"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Insufficient permissions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict or invalid state transition",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Quote emails"
+        ],
+        "summary": "Emails of this quote, newest first, with their status, recipient, sender and any failure",
+        "description": "Requires permission: `quotes:read`",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/QuoteDelivery"
+                      }
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Insufficient permissions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict or invalid state transition",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/quotes/{id}/deliveries/{deliveryId}/retry": {
+      "post": {
+        "tags": [
+          "Quote emails"
+        ],
+        "summary": "Try a failed email again, with the same content and recipient",
+        "description": "Requires permission: `quotes:write`",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "deliveryId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuoteDelivery"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Insufficient permissions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict or invalid state transition",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/public/quotes/view": {
+      "post": {
+        "tags": [
+          "Customer quote links"
+        ],
+        "summary": "The quote behind an emailed link, for the customer to review",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuoteLinkRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicQuote"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict or invalid state transition",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many attempts from this IP (rate limited)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/public/quotes/pdf": {
+      "post": {
+        "tags": [
+          "Customer quote links"
+        ],
+        "summary": "The PDF exactly as it was attached to the email",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuoteLinkRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/pdf": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict or invalid state transition",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many attempts from this IP (rate limited)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/public/quotes/respond": {
+      "post": {
+        "tags": [
+          "Customer quote links"
+        ],
+        "summary": "Accept or decline the quote. Fails with 409 once it was answered or has expired",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuoteResponseRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicQuote"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict or invalid state transition",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many attempts from this IP (rate limited)",
             "content": {
               "application/json": {
                 "schema": {

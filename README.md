@@ -41,6 +41,11 @@ Sign in with one click as **Admin**, **Manager**, **Sales** or **Viewer** to see
   A quote stays valid through the end of its `validUntil` date in the organization's time zone (set at registration,
   editable by admins), and a sent quote counts as expired as soon as that day has passed, even if nobody has acted on it.
   Every status change is recorded with who made it and when.
+- **Emailing quotes & online acceptance:** sales email a quote to the customer with its PDF attached and a link
+  to review it. The customer accepts (signing with their name) or declines (optionally with a reason) online,
+  without an account; the response is recorded in the quote's history and the salesperson is notified by email.
+  Every email is a durable record with the recipient, sender, time, attempts, failure reason and a snapshot of the
+  exact message and PDF that went out. A draft becomes "sent" only once the email has actually gone out.
 - **Quote PDFs:** any quote downloads as an A4 PDF with the customer's billing details, line items, totals, payment
   terms and validity date in the organization's time zone. Long quotes continue onto more pages with the column
   headings repeated, and drafts, expired and rejected quotes carry a watermark. PDFs are generated on the server with
@@ -183,6 +188,8 @@ All endpoints are under `/api/v1`. Full request and response schemas are in Swag
 | Customers | `GET/POST /customers`, `GET/PATCH/DELETE /customers/{id}` |
 | Products | `GET/POST /products`, `GET/PATCH/DELETE /products/{id}` |
 | Quotes | `GET/POST /quotes`, `GET/PATCH/DELETE /quotes/{id}`, `GET /quotes/{id}/pdf`, `POST /quotes/{id}/send`, `/accept`, `/reject`, `/convert` |
+| Quote emails | `GET/POST /quotes/{id}/deliveries` (POST needs an `Idempotency-Key` header), `POST /quotes/{id}/deliveries/{deliveryId}/retry` |
+| Customer links (no auth) | `POST /public/quotes/view`, `POST /public/quotes/pdf`, `POST /public/quotes/respond` |
 | Orders | `GET/POST /orders`, `GET /orders/{id}`, `POST /orders/{id}/status` |
 
 Errors share one shape:
@@ -253,6 +260,16 @@ web/                   React frontend (see web/README.md)
 - **Account removal preserves history.** A nullable `deleted_at` timestamp disables access without deleting users referenced by business records. Startup applies the additive migration to existing databases.
 - **Credential-safe logging.** Request logs remove authorization and cookie headers, including response cookies.
 - **Brute-force protection.** Login and registration are rate limited per IP (`429 RATE_LIMITED`). Only failed logins count toward the limit. Unknown emails still go through scrypt, so response time doesn't reveal which accounts exist. The limiter keeps its counts in memory; with several instances it would need a shared store such as Redis.
+- **Quote emails are durable, idempotent jobs.** Sending writes a `quote_deliveries` row in `sending` state, with
+  snapshots of the recipient, message, email body and PDF, before calling the mail provider; only the provider's
+  acceptance turns it `sent` (and a draft quote `sent`), and an error turns it `failed` with the reason. A repeated
+  `Idempotency-Key` returns the original delivery instead of emailing again, and a unique index makes that hold even
+  for simultaneous requests. Retrying claims the row first, so concurrent retries send once; an attempt stuck in
+  `sending` for 5 minutes (e.g. after a crash) can be retried. While an email is in flight the quote can't be edited,
+  and a failed email of a draft that was edited since can't be retried, so customers only ever receive what the quote
+  says. Each attempt gets a new link token; links from failed attempts never work. Retries are manual (there is no
+  background worker), and if the process crashes after the provider accepted a message but before the outcome was
+  saved, a later retry can send it twice.
 - **Email links that leak nothing.** `POST /auth/forgot-password` answers `202` with the same message for every
   address and does the lookup and sending after the response, so neither the reply nor its timing reveals whether an
   account exists. Link tokens are 256-bit random values; only their SHA-256 hash is stored, each use deletes the row

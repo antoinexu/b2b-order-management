@@ -3,7 +3,7 @@ import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, Table
 import { formatBps, formatMoney } from '@/lib/format';
 
 interface Props {
-  items: LineItem[];
+  items: Pick<LineItem, 'description' | 'quantity' | 'unitPriceCents' | 'discountBps' | 'lineTotalCents'>[];
   currency: string;
   subtotalCents: number;
   taxCents: number;
@@ -26,8 +26,8 @@ export function LineItemsTable({ items, currency, subtotalCents, taxCents, taxRa
           </TableRow>
         </TableHeader>
         <TableBody>
-          {items.map((item) => (
-            <TableRow key={item.id}>
+          {items.map((item, i) => (
+            <TableRow key={i}>
               <TableCell className="whitespace-normal">{item.description}</TableCell>
               <TableCell className="text-right tabular-nums">{item.quantity}</TableCell>
               <TableCell className="hidden text-right tabular-nums sm:table-cell">{money(item.unitPriceCents)}</TableCell>

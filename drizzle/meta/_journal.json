@@ -36,6 +36,13 @@
       "when": 1795100415012,
       "tag": "0004_invitations_password_reset",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1795103997425,
+      "tag": "0005_quote_deliveries",
+      "breakpoints": true
     }
   ]
 }

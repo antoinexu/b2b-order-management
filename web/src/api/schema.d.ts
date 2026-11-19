@@ -1944,7 +1944,7 @@ export interface paths {
         put?: never;
         post?: never;
         /**
-         * Delete a draft quote
+         * Delete a draft quote (not while it is being emailed)
          * @description Requires permission: `quotes:write`
          */
         delete: {
@@ -2015,7 +2015,7 @@ export interface paths {
         options?: never;
         head?: never;
         /**
-         * Edit a draft quote
+         * Edit a draft quote (not while it is being emailed)
          * @description Requires permission: `quotes:write`
          */
         patch: {
@@ -2510,6 +2510,459 @@ export interface paths {
                 };
                 /** @description Conflict or invalid state transition */
                 409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/quotes/{id}/deliveries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Emails of this quote, newest first, with their status, recipient, sender and any failure
+         * @description Requires permission: `quotes:read`
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Success */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: components["schemas"]["QuoteDelivery"][];
+                        };
+                    };
+                };
+                /** @description Validation error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Missing or invalid token */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Insufficient permissions */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Resource not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Conflict or invalid state transition */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        /**
+         * Email the quote's PDF and a link to accept or decline online. A draft becomes sent once the email is accepted by the mail provider. Answers 201 for a new delivery (check `status`: `sent` or `failed`) and 200 when replaying an Idempotency-Key
+         * @description Requires permission: `quotes:write`
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header: {
+                    /** @description A unique value per send (e.g. a UUID). Repeating a request with the same key returns the original delivery instead of emailing again. */
+                    "idempotency-key": string;
+                };
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["SendQuoteRequest"];
+                };
+            };
+            responses: {
+                /** @description Success */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["QuoteDelivery"];
+                    };
+                };
+                /** @description Validation error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Missing or invalid token */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Insufficient permissions */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Resource not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Conflict or invalid state transition */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/quotes/{id}/deliveries/{deliveryId}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Try a failed email again, with the same content and recipient
+         * @description Requires permission: `quotes:write`
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    deliveryId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Success */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["QuoteDelivery"];
+                    };
+                };
+                /** @description Validation error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Missing or invalid token */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Insufficient permissions */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Resource not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Conflict or invalid state transition */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/public/quotes/view": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** The quote behind an emailed link, for the customer to review */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["QuoteLinkRequest"];
+                };
+            };
+            responses: {
+                /** @description Success */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PublicQuote"];
+                    };
+                };
+                /** @description Validation error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Conflict or invalid state transition */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Too many attempts from this IP (rate limited) */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/public/quotes/pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** The PDF exactly as it was attached to the email */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["QuoteLinkRequest"];
+                };
+            };
+            responses: {
+                /** @description Success */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/pdf": string;
+                    };
+                };
+                /** @description Validation error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Conflict or invalid state transition */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Too many attempts from this IP (rate limited) */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/public/quotes/respond": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Accept or decline the quote. Fails with 409 once it was answered or has expired */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["QuoteResponseRequest"];
+                };
+            };
+            responses: {
+                /** @description Success */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PublicQuote"];
+                    };
+                };
+                /** @description Validation error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Conflict or invalid state transition */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Error"];
+                    };
+                };
+                /** @description Too many attempts from this IP (rate limited) */
+                429: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -3215,9 +3668,15 @@ export interface components {
             fromStatus: "draft" | "sent" | "accepted" | "rejected" | "expired" | null;
             /** @enum {string} */
             toStatus: "draft" | "sent" | "accepted" | "rejected" | "expired";
-            /** Format: uuid */
-            changedById: string;
-            changedByName: string;
+            /**
+             * Format: uuid
+             * @description The staff member, or null when the customer responded online
+             */
+            changedById: string | null;
+            changedByName: string | null;
+            /** @description The customer who responded online, as "Name <email>" */
+            changedByCustomer: string | null;
+            note: string | null;
             /** Format: date-time */
             createdAt: string;
         };
@@ -3256,6 +3715,100 @@ export interface components {
         };
         ConvertQuoteRequest: {
             poNumber?: string | null;
+        };
+        QuoteDelivery: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            quoteId: string;
+            /**
+             * @description `sending` until the mail provider accepts the email (`sent`) or refuses it (`failed`, see `lastError`)
+             * @enum {string}
+             */
+            status: "sending" | "sent" | "failed";
+            recipientEmail: string;
+            recipientName: string | null;
+            message: string | null;
+            subject: string;
+            /** Format: uuid */
+            sentById: string;
+            sentByName: string;
+            attempts: number;
+            /** Format: date-time */
+            lastAttemptAt: string | null;
+            lastError: string | null;
+            /** Format: date-time */
+            sentAt: string | null;
+            /** @description Whether POST .../retry may be used now */
+            retryable: boolean;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        SendQuoteRequest: {
+            /**
+             * Format: email
+             * @description Defaults to the customer's email
+             */
+            recipientEmail?: string;
+            /** @description Defaults to the customer's contact name when sending to the customer's email */
+            recipientName?: string;
+            /** @description A personal note shown above the quote summary */
+            message?: string;
+        };
+        PublicQuote: {
+            organizationName: string;
+            customerName: string;
+            recipientEmail: string;
+            preparedBy: {
+                name: string;
+                email: string;
+            };
+            /** Format: date-time */
+            sentAt: string;
+            quote: {
+                number: string;
+                /** @enum {string} */
+                status: "draft" | "sent" | "accepted" | "rejected" | "expired";
+                validUntil: string | null;
+                currency: string;
+                notes: string | null;
+                taxRateBps: number;
+                subtotalCents: number;
+                taxCents: number;
+                totalCents: number;
+                items: {
+                    description: string;
+                    quantity: number;
+                    unitPriceCents: number;
+                    discountBps: number;
+                    lineTotalCents: number;
+                }[];
+            };
+            /** @description True while the quote awaits a response and is within its validity date */
+            canRespond: boolean;
+            /** @description The outcome, once the quote was accepted, rejected or expired */
+            response: {
+                /** @enum {string} */
+                status: "accepted" | "rejected" | "expired";
+                /** Format: date-time */
+                at: string | null;
+                by: string | null;
+                note: string | null;
+            } | null;
+        };
+        QuoteLinkRequest: {
+            /** @description Token from the emailed link */
+            token: string;
+        };
+        QuoteResponseRequest: {
+            /** @description Token from the emailed link */
+            token: string;
+            /** @enum {string} */
+            decision: "accept" | "reject";
+            /** @description Who is responding for the customer */
+            name: string;
+            /** @description E.g. why the quote is declined */
+            note?: string;
         };
         CreateUserRequest: {
             /** Format: email */
