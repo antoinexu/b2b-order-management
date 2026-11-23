@@ -255,6 +255,9 @@ web/                   React frontend (see web/README.md)
 
 ## Design decisions
 
+The reasoning behind these, with the alternatives considered and the trade-offs accepted, is in
+[docs/design-decisions.md](docs/design-decisions.md).
+
 - **Integer money.** Amounts are stored in cents and rates in basis points (`825` = 8.25%), with rounding done once per line and once for tax.
 - **Exact calculation and storage limits.** BigInt intermediates preserve integer precision before rounding; values are checked against the database's 32-bit money limit before writes.
 - **Account removal preserves history.** A nullable `deleted_at` timestamp disables access without deleting users referenced by business records. Startup applies the additive migration to existing databases.
