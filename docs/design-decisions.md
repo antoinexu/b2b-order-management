@@ -63,9 +63,10 @@ re-checked whenever a line, the customer or the currency changes.
 **Context.** Two people can act on the same quote at once: one converts it to an order while another rejects it,
 or two people convert it simultaneously.
 
-**Decision.** The allowed transitions are declared in code (for example `ORDER_TRANSITIONS` in
-`src/modules/orders.ts`). Each transition runs in a transaction that first takes the row with `SELECT … FOR UPDATE`,
-re-checks the current status, then writes the new status and a history row. Invalid moves return
+**Decision.** Order transitions are declared as a table (`ORDER_TRANSITIONS` in `src/modules/orders.ts`). Quotes
+have only a few fixed moves, so each quote handler checks its required status with `requireStatus` instead. Either
+way, each transition runs in a transaction that first takes the row with `SELECT … FOR UPDATE`, re-checks the
+current status, then writes the new status and a history row. Invalid moves return
 `409 INVALID_STATE`. Converting a quote is limited to once per quote, and the database enforces this as well.
 
 **Alternatives.**
@@ -81,7 +82,7 @@ races.
 
 ## 5. Document numbers from a per-tenant counter
 
-**Context.** Businesses expect gap-free, human-friendly numbers (`Q-000001`, `SO-000001`) that count separately
+**Context.** Businesses expect sequential, human-friendly numbers (`Q-000001`, `SO-000001`) that count separately
 for each organization.
 
 **Decision.** `organizations.quote_seq` and `order_seq` are incremented with
@@ -95,7 +96,9 @@ rollback releases the number.
   rolled-back inserts leave gaps.
 - *`MAX(number) + 1`.* This races without a lock.
 
-**Trade-off.** Document creation is serialized within one organization, which is fine at B2B volumes.
+**Trade-off.** Document creation is serialized within one organization, which is fine at B2B volumes. Numbers are
+sequential but not gap-free: deleting a draft quote leaves its number unused. Strict gap-free numbering, as some
+invoicing rules require, would mean voiding documents instead of deleting them.
 
 ## 6. Quote expiry is derived on read, not scheduled
 
@@ -113,7 +116,9 @@ IANA time zone, so a quote is valid through the end of that day where the busine
   wrong, and changing an organization's time zone would require a rescan.
 - *A database trigger.* Triggers fire on writes, but expiry happens when time passes with no write at all.
 
-**Trade-off.** Lazy expiry is not written to the status history, because no event happened. The rule must live in
+**Trade-off.** Passive expiry is not written to the status history, because no event happened. A history entry
+appears only when someone tries to accept an expired quote: that attempt stores `expired` and records a
+`sent → expired` change by the person who tried. The rule must live in
 both the TypeScript function and the SQL filter, and tests keep the two in agreement.
 
 ## 7. Pricing policy enforced on the server

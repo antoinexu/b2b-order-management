@@ -255,7 +255,7 @@ web/                   React frontend (see web/README.md)
 
 ## Design decisions
 
-The reasoning behind these, with the alternatives considered and the trade-offs accepted, is in
+The reasoning behind the main decisions, with the alternatives considered and the trade-offs accepted, is in
 [docs/design-decisions.md](docs/design-decisions.md).
 
 - **Integer money.** Amounts are stored in cents and rates in basis points (`825` = 8.25%), with rounding done once per line and once for tax.
