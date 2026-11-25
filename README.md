@@ -301,6 +301,12 @@ The reasoning behind the main decisions, with the alternatives considered and th
 - [x] Team invitations and password reset by email
 - [x] Frontend (React web app)
 
+## Contributing
+
+Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for the development setup and the checks CI runs,
+and [CHANGELOG.md](CHANGELOG.md) for release notes. Please report security issues privately as described in
+[SECURITY.md](SECURITY.md), and follow the [Code of Conduct](CODE_OF_CONDUCT.md).
+
 ## License
 
 [MIT](LICENSE)
