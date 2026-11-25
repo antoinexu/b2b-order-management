@@ -7,11 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
-### Added
-
-- Contributing guide, security policy, code of conduct, and issue and pull request templates.
-
-## [1.0.0] - 2026-11-23
+## [1.0.0] - 2026-11-25
 
 First public release.
 
@@ -36,6 +32,7 @@ First public release.
 - Vitest suites on PGlite, Postgres concurrency tests, Playwright end-to-end tests, CI, Docker image and Render
   deployment blueprint.
 - Design decisions document describing the alternatives considered and trade-offs.
+- Contributing guide, security policy, code of conduct, and issue and pull request templates.
 
 [Unreleased]: https://github.com/antoinexu/b2b-order-management/compare/v1.0.0...HEAD
 [1.0.0]: https://github.com/antoinexu/b2b-order-management/releases/tag/v1.0.0
